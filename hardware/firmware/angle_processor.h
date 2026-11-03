@@ -1,0 +1,1 @@
+// Angle processor interface placeholder.

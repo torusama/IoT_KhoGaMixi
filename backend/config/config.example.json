@@ -1,0 +1,13 @@
+{
+  "environment": "development",
+  "mqtt": {
+    "brokerUrl": "",
+    "clientId": ""
+  },
+  "persistence": {
+    "provider": ""
+  },
+  "notifications": {
+    "emailEnabled": false
+  }
+}
