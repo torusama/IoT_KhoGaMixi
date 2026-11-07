@@ -1,1 +1,0 @@
-// Angle processor implementation placeholder.

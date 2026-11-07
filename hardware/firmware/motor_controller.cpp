@@ -1,1 +1,0 @@
-// Motor controller implementation placeholder.
