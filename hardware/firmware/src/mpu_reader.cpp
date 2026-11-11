@@ -1,5 +1,6 @@
 
 #include "mpu_reader.h"
+#include "data_types.h"
 #include "sensor_setup.h"
 #include <Wire.h>
 
