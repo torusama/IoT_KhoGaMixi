@@ -1,0 +1,11 @@
+<script type="text/javascript">
+RED.nodes.registerType('posture-config',{category:'config',defaults:{name:{value:'Posture runtime'}},label:function(){return this.name;}});
+for(const [type,label,inputs,outputs] of [['posture-mqtt-in','MQTT device messages',0,1],['posture-ingest','Validate and persist',1,1],['posture-maintenance','Timeout / retry / stale',1,0],['posture-api','Posture REST / SSE API',1,0]]){
+ RED.nodes.registerType(type,{category:'posture',color:'#acd6db',defaults:{name:{value:''},runtime:{value:'',type:'posture-config',required:true}},inputs,outputs,icon:'bridge.svg',label:function(){return this.name||label;}});
+}
+</script>
+<script type="text/html" data-template-name="posture-config"><div class="form-row"><label for="node-config-input-name">Name</label><input id="node-config-input-name"></div></script>
+<script type="text/html" data-template-name="posture-mqtt-in"><div class="form-row"><label for="node-input-runtime">Runtime</label><input id="node-input-runtime"></div></script>
+<script type="text/html" data-template-name="posture-ingest"><div class="form-row"><label for="node-input-runtime">Runtime</label><input id="node-input-runtime"></div></script>
+<script type="text/html" data-template-name="posture-maintenance"><div class="form-row"><label for="node-input-runtime">Runtime</label><input id="node-input-runtime"></div></script>
+<script type="text/html" data-template-name="posture-api"><div class="form-row"><label for="node-input-runtime">Runtime</label><input id="node-input-runtime"></div></script>

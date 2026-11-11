@@ -1,0 +1,10 @@
+{
+  "schema_version": 2, "device_id": "esp32_01", "boot_id": "boot_demo",
+  "t_mono_us": 1000000, "ts_unix_ms": null, "state_seq": 1,
+  "online": true, "state": "IDLE", "session_id": null,
+  "config": {
+    "config_rev": "cfg_1", "geometry_rev": "g_1", "calibration_rev": "c_1", "reference_rev": null,
+    "algorithm_version": "arc2d_v1", "distances_mm": [70, 70, 70],
+    "sensor_map": [0, 1, 2, 3], "mounting_confirmed": true, "reference": null
+  }
+}

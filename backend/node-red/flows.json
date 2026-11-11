@@ -1,0 +1,14 @@
+[
+  {"id":"spt-flow","type":"tab","label":"Smart Posture backend","disabled":false,"info":"Protocol v2 only. ESP32 owns geometry/statistics. Credentials from environment."},
+  {"id":"spt-runtime","type":"posture-config","name":"MQTT + durable store"},
+  {"id":"spt-ingress","type":"posture-mqtt-in","z":"spt-flow","runtime":"spt-runtime","name":"Device MQTT ingress","x":170,"y":100,"wires":[["spt-ingest"]]},
+  {"id":"spt-ingest","type":"posture-ingest","z":"spt-flow","runtime":"spt-runtime","name":"Validate, reconcile, persist, receipt","x":480,"y":100,"wires":[["spt-debug"]]},
+  {"id":"spt-debug","type":"debug","z":"spt-flow","name":"Accepted message metadata","active":false,"tosidebar":true,"console":false,"complete":"payload","x":810,"y":100,"wires":[]},
+  {"id":"spt-timer","type":"inject","z":"spt-flow","name":"Every second","props":[{"p":"payload"}],"repeat":"1","once":true,"onceDelay":0.5,"payloadType":"date","x":160,"y":190,"wires":[["spt-maintenance"]]},
+  {"id":"spt-maintenance","type":"posture-maintenance","z":"spt-flow","runtime":"spt-runtime","x":470,"y":190,"wires":[]},
+  {"id":"spt-get","type":"http in","z":"spt-flow","name":"Authenticated reads / realtime","url":"/api/v1/*","method":"get","upload":false,"swaggerDoc":"","x":210,"y":290,"wires":[["spt-api"]]},
+  {"id":"spt-post","type":"http in","z":"spt-flow","name":"Authenticated device commands","url":"/api/v1/*","method":"post","upload":false,"swaggerDoc":"","x":210,"y":350,"wires":[["spt-api"]]},
+  {"id":"spt-api","type":"posture-api","z":"spt-flow","runtime":"spt-runtime","x":520,"y":320,"wires":[]},
+  {"id":"spt-catch","type":"catch","z":"spt-flow","name":"Runtime errors","scope":null,"uncaught":false,"x":170,"y":440,"wires":[["spt-error-debug"]]},
+  {"id":"spt-error-debug","type":"debug","z":"spt-flow","name":"Runtime diagnostics","active":true,"tosidebar":true,"console":false,"complete":"error.message","x":480,"y":440,"wires":[]}
+]

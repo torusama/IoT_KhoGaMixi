@@ -1,0 +1,7 @@
+{
+  "schema_version": 2, "device_id": "esp32_01", "boot_id": "boot_demo", "session_id": "ses_demo",
+  "t_mono_us": 7000000, "ts_unix_ms": null, "message_id": "sum_demo_1", "summary_seq": 1,
+  "last_sample_seq": 250, "coverage_start_mono_us": 2000000, "coverage_end_mono_us": 7000000,
+  "elapsed_ms": 5000, "valid_measurement_ms": 5000, "valid_metric_ms": 0, "invalid_ms": 0,
+  "histogram_ms": [0, 0, 0, 0, 0, 0], "is_final": false
+}

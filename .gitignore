@@ -15,11 +15,20 @@ out/
 *.secret
 secrets/
 
+# Local review documents
+/review/
+
 # Temporary files
 *.tmp
 *.temp
 *.log
 .cache/
+node_modules/
+.runtime/
+coverage/
+*-debug.log
+backend/node-red/.config*
+backend/node-red/flows_cred.json
 .DS_Store
 Thumbs.db
 

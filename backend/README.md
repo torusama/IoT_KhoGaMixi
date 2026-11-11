@@ -1,151 +1,52 @@
-# Smart Posture Tracker Backend
+# Backend Smart Posture Tracker
 
-The backend is intended to be the application layer of the Smart Posture
-Tracker (SPT). It will eventually process posture-related data from the ESP32,
-run posture and 2D spine-curve calculations, coordinate integrations, and
-provide results to other system components.
+Backend chạy trên **Node-RED 5**, kết nối MQTT và lưu bằng **Firebase Realtime Database** hoặc file cục bộ để phát triển. ESP32 vẫn là nguồn tính góc, đường cong và thống kê.
 
-The current backend is a project scaffold, not a runnable application. The
-ESP32 firmware is responsible for hardware access and sensor acquisition, and
-the frontend is intended to provide the user interface. No backend runtime,
-API, sensor-data input, spine model, or persistence implementation currently
-exists.
+## Chạy nhanh
 
-## Directory structure
+Tại thư mục này, yêu cầu Node.js >=22.9:
 
-| Path | Responsibility | Status |
-| --- | --- | --- |
-| `config/config.example.json` | Example shape for environment, MQTT, persistence, and notification settings. Values are empty placeholders. | Configuration template |
-| `logic/` | Reserved for posture monitoring and 2D spine-curve modeling. | Planned |
-| `integrations/mqtt/` | Reserved for the backend MQTT integration. | Planned |
-| `integrations/firebase/` | Reserved for Firebase integration and persistence. | Planned |
-| `integrations/email/` | Reserved for email notifications. | Planned |
-| `node-red/` | Reserved for Node-RED orchestration flows. | Planned |
+```powershell
+npm ci
+npm run configure
+npm run broker
+```
 
-The README files in the reserved directories document their intended scope;
-they do not define implemented functions, classes, or APIs.
+Mở hai terminal khác tại backend: chạy `npm start` và `npm run simulator`. Cấu hình sinh trong `.env` được bỏ qua bởi Git; script configure không ghi đè tệp đã có. API ở `/api/v1`, cần Bearer token từ `.env`; editor tắt mặc định.
 
-## File responsibilities
+Mặc định STORE_DRIVER=file lưu `.runtime/store.json`, **chưa là cloud**. Chọn STORE_DRIVER=firebase với project/database URL và ADC, hoặc dùng emulator. Simulator gắn simulated:true và không điều khiển phần cứng thật.
 
-### `config/config.example.json`
+## Các thành phần
 
-This JSON file is a configuration example, not an active runtime configuration.
-It currently contains:
+| Đường dẫn | Trách nhiệm |
+|---|---|
+| `node-red/flows.json`, `nodes/` | Luồng nhận/validate/lưu, maintenance, REST/SSE |
+| `node-red/settings.js`, `api.js` | Cấu hình runtime, auth/CORS và route API |
+| `logic/service.js` | Command/session, ACK/state, dedupe, storage receipt, history và báo cáo |
+| `integrations/mqtt/` | MQTT.js transport, validator v2, ví dụ message |
+| `integrations/firebase/` | Adapter Admin SDK/file, rules và cấu hình emulator |
+| `config/runtime.js`, `.env.example` | Cấu hình đang được nạp; JSON example cũ không được runtime đọc |
+| `scripts/` | Configure, dev broker, simulator, Mosquitto config, kiểm tra và runner emulator |
+| `infrastructure/mosquitto/`, `compose.yaml` | Mosquitto có password/ACL, template TLS và stack Docker phát triển |
 
-- `environment`: intended runtime environment name (`development` in the
-  example).
-- `mqtt.brokerUrl`: placeholder for an MQTT broker URL.
-- `mqtt.clientId`: placeholder for an MQTT client identifier.
-- `persistence.provider`: placeholder for the chosen storage provider.
-- `notifications.emailEnabled`: example flag for email notifications.
+Một instance backend cho cùng bộ thiết bị. Command được lưu trước publish; accepted khác applied; timeout là unknown, không tạo lại phiên. State retained không xác nhận online. Summary/event/final chỉ nhận receipt sau ghi bền; dữ liệu cũ không gán sang session mới. Phiên STOP và final đã lưu là hai trạng thái riêng.
 
-No code currently loads or validates this file. It contains no credentials.
+## Kiểm thử
 
-### `logic/`
+```powershell
+npm run check
+npm test
+npm run test:firebase
+```
 
-`logic/README.md` reserves this directory for posture monitoring and 2D spine
-curve modeling. There are currently no source files, functions, classes, input
-schemas, or output schemas.
+Lệnh cuối cần JDK 21 và tải Firebase Emulator lần đầu. Bộ test gồm logic giao thức/phiên, runtime Node-RED thật với MQTT/REST/SSE và Firebase Admin SDK/emulator. Không dùng credential cloud hoặc ESP32 thật. Docker Compose/Mosquitto chưa chạy trong môi trường hiện tại.
 
-In particular, no `spine_model` module exists yet. The repository therefore
-does not verify:
+## Tài liệu
 
-- whether the model will receive raw MPU6050 readings or processed data;
-- which calculations or paper formulas it will implement;
-- what posture or spine representation it will output; or
-- how calibration, filtering, or model parameters will be configured.
+- [Setup và cấu hình Firebase/Internet](../docs/setup.md)
+- [API frontend](../docs/api.md)
+- [MQTT contract v2](../docs/mqtt-contract.md)
+- [Checklist firmware v2](../docs/device-integration.md)
+- [Kiến trúc](../docs/architecture.md), [kế hoạch](../docs/PLAN.md)
 
-The reference architecture mentions a 2D spine curve model, but no
-implementation currently supports a claim that the reference-paper formulas
-are being applied.
-
-### Integration and orchestration directories
-
-The following directories contain only scope documentation at present:
-
-- `integrations/mqtt/README.md`: says the MQTT communication contract is
-  pending.
-- `integrations/firebase/README.md`: reserves the directory for future
-  Firebase integration and persistence.
-- `integrations/email/README.md`: reserves the directory for future email
-  notifications.
-- `node-red/README.md`: reserves the directory for future Node-RED flows.
-
-They currently define no functions, classes, dependencies, transport handlers,
-database connections, or data formats.
-
-## Current data flow
-
-No backend data flow is implemented. The intended system-level direction in
-`docs/architecture.md` is:
-
-`ESP32 sensor measurements -> backend processing -> persistence/results -> frontend`
-
-The exact transport, message format, processing workflow, and persistence
-technology are all TBD. A spine-model or posture-interpretation step cannot be
-shown as active because no corresponding backend code exists.
-
-The planned, not implemented, backend flow is:
-
-`Sensor/Firmware Data -> Input Processing -> Spine Model -> Posture Interpretation -> Output`
-
-The firmware currently has only initialization code and does not provide a
-verified backend interface. The backend also has no confirmed HTTP API,
-WebSocket, MQTT topic, serial protocol, Node-RED flow, database connection, or
-frontend API.
-
-## Interfaces and communication
-
-No interfaces are implemented in this directory.
-
-| Interface | Current status |
-| --- | --- |
-| ESP32 to backend | Planned; transport and payload format are TBD |
-| MQTT | Planned; topics, payloads, QoS, retained messages, and acknowledgments are not finalized |
-| HTTP or WebSocket API | Not present |
-| Serial communication | Not present |
-| Node-RED | Planned; no flows exist |
-| Firebase or other database | Planned; provider and data model are TBD |
-| Email notifications | Planned; no notification implementation exists |
-
-The MQTT placeholder configuration does not establish an active MQTT
-interface. See [`docs/mqtt-contract.md`](../docs/mqtt-contract.md) for the
-unfinalized contract topics.
-
-## Configuration and dependencies
-
-The only backend configuration artifact is
-[`config/config.example.json`](config/config.example.json). It documents
-placeholder settings for MQTT, persistence, and email notifications. No
-environment-variable names, dependency manifest, lockfile, package manager, or
-external library requirement is defined for the backend.
-
-Do not add real credentials to the example file. The repository setup
-documentation states that local configuration and deployment settings are TBD.
-
-## Running and testing
-
-There is currently no backend command to install, start, build, or test. No
-backend source code, test files, or test runner configuration exists.
-
-The backend runtime and application structure remain TBD, so a runnable setup
-cannot be documented without inventing behavior or commands.
-
-## Limitations and TODOs
-
-- Choose the backend runtime and application structure.
-- Define the ESP32-to-backend transport and sensor-data payload.
-- Implement input validation and processing.
-- Define and implement the `spine_model`, including its inputs, outputs, and
-  supported reference-paper calculations.
-- Implement posture interpretation and monitoring logic.
-- Choose and implement persistence, including its data model and retention
-  policy.
-- Define and implement MQTT topics and message behavior, if MQTT remains the
-  selected transport.
-- Implement Firebase integration if it is selected.
-- Create Node-RED flows if orchestration is required.
-- Implement email notifications if they are required.
-- Define the frontend-facing API or other output interface.
-- Add dependency management, runtime configuration loading, and automated
-  tests.
+Firmware hiện có còn v1; backend từ chối dữ liệu thiếu schema/boot/session thay vì tạo danh tính giả. Chưa xây dashboard hoàn chỉnh, gửi email thật, journal firmware hoặc phân quyền nhiều người dùng trong phần backend này. Event có yêu cầu thông báo được lưu pending để tích hợp dịch vụ email sau.

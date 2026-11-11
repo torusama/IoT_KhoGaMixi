@@ -1,0 +1,5 @@
+{
+  "schema_version": 2, "device_id": "esp32_01", "boot_id": "boot_demo", "session_id": "ses_demo",
+  "t_mono_us": 2000000, "ts_unix_ms": null,
+  "command_id": "cmd_demo", "status": "applied", "state": "RUNNING", "started_at_mono_us": 2000000
+}

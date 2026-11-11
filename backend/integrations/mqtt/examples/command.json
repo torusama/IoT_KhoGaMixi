@@ -1,0 +1,6 @@
+{
+  "schema_version": 2, "device_id": "esp32_01", "target_boot_id": "boot_demo",
+  "command_id": "cmd_demo", "command": "START", "session_id": "ses_demo",
+  "expected_config_rev": "cfg_1", "not_after_mono_us": 11000000,
+  "preflight_timeout_ms": 5000, "mode": "measurement_only"
+}

@@ -1,0 +1,24 @@
+{
+  "name": "smart-posture-backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Node-RED runtime, MQTT protocol and persistence for Smart Posture Tracker",
+  "engines": { "node": ">=22.9" },
+  "scripts": {
+    "configure": "node scripts/configure.js",
+    "start": "node --env-file-if-exists=.env node_modules/node-red/red.js --userDir .runtime/node-red --settings node-red/settings.js",
+    "broker": "node --env-file-if-exists=.env scripts/dev-broker.js",
+    "broker:config": "node --env-file-if-exists=.env scripts/mosquitto-config.js",
+    "simulator": "node --env-file-if-exists=.env scripts/simulator.js",
+    "test": "node --test ../tests/backend/*.test.js",
+    "test:firebase": "firebase emulators:exec --only database --project demo-spt --config integrations/firebase/firebase.json \"node scripts/firebase-test-runner.js\"",
+    "emulators": "firebase emulators:start --only database --project demo-spt --config integrations/firebase/firebase.json",
+    "check": "node scripts/check.js"
+  },
+  "dependencies": {
+    "firebase-admin": "14.5.0",
+    "mqtt": "5.16.1",
+    "node-red": "5.0.9"
+  },
+  "devDependencies": { "aedes": "1.2.0", "firebase-tools": "15.35.0" }
+}

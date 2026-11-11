@@ -1,0 +1,12 @@
+{
+  "schema_version": 2, "device_id": "esp32_01", "boot_id": "boot_demo", "session_id": "ses_demo",
+  "t_mono_us": 3000000, "ts_unix_ms": null, "sample_seq": 50, "telemetry_seq": 10,
+  "config_rev": "cfg_1", "geometry_rev": "g_1", "calibration_rev": "c_1", "reference_rev": null,
+  "algorithm_version": "arc2d_v1", "pitch_deg": [32, 22, 12, 5], "relative_deg": [10, 10, 7],
+  "sensor_quality": ["OK", "OK", "OK", "OK"], "curve_valid": true, "metric_valid": false,
+  "curve": {
+    "order": ["P4", "P3", "P2", "P1"],
+    "nodes_mm": [[0, 0], [10.340, 69.188], [30.780, 136.044], [62.519, 198.336]],
+    "kappa_per_mm": [0.001745329, 0.002493328, 0.002493328]
+  }
+}

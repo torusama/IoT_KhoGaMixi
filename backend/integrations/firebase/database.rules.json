@@ -1,0 +1,9 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "spt": {
+      "sessions": { ".indexOn": ["meta/device_id", "meta/started_at_ms"] }
+    }
+  }
+}
