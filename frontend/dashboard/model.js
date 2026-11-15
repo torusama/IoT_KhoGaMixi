@@ -50,16 +50,57 @@ function step(s, input, now, mode) {
     if (s.pending && s.pending.demoResult !== 'timeout' && now >= Date.parse(s.pending.timestamp)+1000) {
       const c=s.pending; return step(s,{kind:'ack',requestId:c.requestId,deviceId:c.deviceId,commandType:c.commandType,sessionId:c.sessionId,status:c.demoResult === 'success' ? 'applied' : 'rejected'},now,mode);
     }
-    const t=now/1000, wave=Math.sin(t/8); let pitch;
-    if (s.scenario === 'c') pitch=[25+wave*3,16+wave*2,8,2];
-    else if (s.scenario === 's') pitch=[18+wave*3,6,-8+wave*2,0];
-    else pitch=[4+wave*2,3+wave,2,1];
-    const ok=s.connection==='online' && s.scenario!=='missing'; s.valid=ok;
-    s.sensorStatus=Array.from({length:4},(_,i)=>s.connection!=='online'?'offline':s.scenario==='missing' && i===2?'missing':'ok');
-    s.pitch=s.connection!=='online'?null:pitch.map((v,i)=>s.sensorStatus[i]==='ok'?v:null);
-    s.relative=s.pitch?[0,1,2].map(i=>Number.isFinite(s.pitch[i])&&Number.isFinite(s.pitch[i+1])?s.pitch[i]-s.pitch[i+1]:null):null; s.updated=now;
-    if (s.session==='active' && ok && s.lastTick && now-s.lastTick<=2000) s.validMs += now-s.lastTick;
-    s.lastTick=now; s.samples.push({t:now,pitch:ok?pitch:null,relative:s.relative}); if(s.samples.length>120)s.samples.shift();
+    // Đây là bốn góc giả lập, không phải dữ liệu đọc từ MPU6050 thật.
+    const currentTimeSeconds = now / 1000;
+    const simulatedMovement = Math.sin(currentTimeSeconds / 8);
+    let pitchDegrees;
+    if (s.scenario === 'c') {
+      pitchDegrees = [25 + simulatedMovement * 3, 16 + simulatedMovement * 2, 8, 2];
+    } else if (s.scenario === 's') {
+      pitchDegrees = [18 + simulatedMovement * 3, 6, -8 + simulatedMovement * 2, 0];
+    } else {
+      pitchDegrees = [4 + simulatedMovement * 2, 3 + simulatedMovement, 2, 1];
+    }
+
+    const frameIsValid = s.connection === 'online' && s.scenario !== 'missing';
+    s.valid = frameIsValid;
+    s.sensorStatus = [];
+    for (let sensorIndex = 0; sensorIndex < 4; sensorIndex++) {
+      let sensorStatus = 'ok';
+      if (s.connection !== 'online') sensorStatus = 'offline';
+      else if (s.scenario === 'missing' && sensorIndex === 2) sensorStatus = 'missing';
+      s.sensorStatus.push(sensorStatus);
+    }
+
+    s.pitch = null;
+    s.relative = null;
+    if (s.connection === 'online') {
+      s.pitch = [];
+      for (let sensorIndex = 0; sensorIndex < 4; sensorIndex++) {
+        const sensorPitchDegrees = s.sensorStatus[sensorIndex] === 'ok' ? pitchDegrees[sensorIndex] : null;
+        s.pitch.push(sensorPitchDegrees);
+      }
+      s.relative = [];
+      for (let upperSensorIndex = 0; upperSensorIndex < 3; upperSensorIndex++) {
+        const upperPitchDegrees = s.pitch[upperSensorIndex];
+        const lowerPitchDegrees = s.pitch[upperSensorIndex + 1];
+        let relativeAngleDegrees = null;
+        if (Number.isFinite(upperPitchDegrees) && Number.isFinite(lowerPitchDegrees)) {
+          // SPT: góc cảm biến trên trừ góc cảm biến dưới, chuẩn hóa về [-180,180).
+          relativeAngleDegrees = upperPitchDegrees - lowerPitchDegrees;
+          if (relativeAngleDegrees >= 180) relativeAngleDegrees -= 360;
+          if (relativeAngleDegrees < -180) relativeAngleDegrees += 360;
+        }
+        s.relative.push(relativeAngleDegrees);
+      }
+    }
+    s.updated = now;
+    if (s.session === 'active' && frameIsValid && s.lastTick && now - s.lastTick <= 2000) {
+      s.validMs += now - s.lastTick;
+    }
+    s.lastTick = now;
+    s.samples.push({ t: now, pitch: frameIsValid ? pitchDegrees : null, relative: s.relative });
+    if (s.samples.length > 120) s.samples.shift();
   }
   // Production messages must come from a trusted F06.1 adapter; no simulated success.
   if (!demo && p.kind === 'state') {

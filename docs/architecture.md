@@ -1,6 +1,6 @@
 # Kiến trúc đang triển khai
 
-Thiết kế dựa trên [PLAN](PLAN.md). Node-RED là runtime backend; ESP32 là nguồn tính góc, cung, thời lượng, histogram, sự kiện và điều khiển motor. Backend kiểm tra giao thức, điều phối lệnh và lưu kết quả; không tính một bộ thống kê tư thế thứ hai từ MQTT.
+Thiết kế đích dựa trên [PLAN](PLAN.md). Node-RED là runtime backend; ESP32 dự kiến là nguồn tính góc, cung, thời lượng, histogram, sự kiện và điều khiển motor. Backend kiểm tra giao thức, điều phối lệnh và lưu kết quả; không tính một bộ thống kê tư thế thứ hai từ MQTT. Source ESP32 hiện mới có đọc/lọc góc và MQTT legacy, chưa thực hiện hết các trách nhiệm trên. Đường MQTT v2 đã kiểm thử bằng simulator; dashboard còn thiếu adapter production. Xem [đấu mạch](../hardware/README.md) và [audit đường dữ liệu hiện tại](device-integration.md) trước khi tích hợp thiết bị thật.
 
 ```mermaid
 flowchart LR
@@ -45,6 +45,8 @@ Phiên lưu config snapshot bất biến; reference chỉ ghi là đã áp dụn
 Báo cáo dùng `Asia/Ho_Chi_Minh`, nhóm theo ngày bắt đầu phiên; tổng mỗi phiên lấy final hoặc snapshot mới nhất và đánh dấu chưa hoàn tất. Thời gian thiết bị chưa đồng bộ được ghi `received_estimate`.
 
 ## Ranh giới hiện tại
+
+F02.1 có core thuần JavaScript tại `shared/geometry/` dùng chung cho simulator MQTT và đường vẽ demo trong Dashboard; adapter F01/v2 yêu cầu bằng chứng frame hợp lệ, đồng bộ và quy ước Pitch. Đây là triển khai host để kiểm thử/hiển thị; chưa có port C++ thay curve builder trên ESP32 theo kiến trúc đích, chưa tự nối firmware cũ hoặc mở geometry production trên Dashboard. Xem [interface và giới hạn F02.1](F02.1.md).
 
 Firmware trong repo còn giao thức cũ; chưa có session manager, state v2, curve builder, SET_REFERENCE hoặc motor driver đáp ứng contract này. Xem [hướng dẫn thiết bị](device-integration.md). Backend không giả session/boot cho dữ liệu cũ. Chưa triển khai giao diện dashboard hoàn chỉnh, gửi email thực, journal firmware hoặc triển khai cloud có tài khoản thật.
 

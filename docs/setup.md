@@ -117,6 +117,8 @@ npm run test:firebase
 
 ## 7. Firmware
 
+Đọc [bảng đấu ESP32/TCA9548A/bốn MPU6050](../hardware/README.md) trước khi cấp điện. Source dùng ESP32 classic `esp32dev`, GPIO21/22, TCA 0x70, mỗi MPU 0x68 và mapping kênh 0..3 thành P1..P4; cần xác nhận đúng breakout, nguồn/pull-up và hướng lắp thực tế.
+
 Từ gốc repository:
 
 ```text
@@ -125,4 +127,4 @@ pio run -d hardware/firmware -t upload
 pio device monitor -d hardware/firmware -b 115200
 ```
 
-Các lệnh này là workflow PlatformIO của thư mục hiện có, chưa được xác minh lại trong thay đổi backend này. Firmware MQTT hiện còn v1; hoàn thiện [device-integration.md](device-integration.md) trước khi dùng để nghiệm thu v2.
+Các lệnh này là workflow PlatformIO của thư mục hiện có, chưa được xác minh build/upload ESP32 trong môi trường bàn giao. Có unit test C++ host cho tính góc, không thay kiểm thử mạch thật. Firmware MQTT hiện còn legacy, chưa gửi username/password, còn broker mặc định chỉ mở loopback; hoàn thiện [hướng dẫn LAN và contract v2](device-integration.md) trước khi nghiệm thu. Dashboard cổng 1881 là demo độc lập và chưa có adapter dữ liệu thật, không tự nối backend chỉ bằng đổi mode.

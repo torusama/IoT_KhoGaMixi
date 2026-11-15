@@ -2,17 +2,32 @@
 const mqtt = require('mqtt');
 const { randomUUID } = require('node:crypto');
 const { canonical } = require('../logic/service');
+const { reconstructSpine2D, wrapDegrees } = require('../../shared/geometry/spine2d');
+const { toTelemetryCurve } = require('../../shared/geometry/f01-adapter');
 
-const wrap = value => ((value + 540) % 360) - 180;
-function demoCurve(pitch, distances) {
-  const nodes = [[0, 0]]; const kappa = [];
-  for (let i = 3; i > 0; i--) {
-    const a = pitch[i] * Math.PI / 180; const delta = wrap(pitch[i - 1] - pitch[i]) * Math.PI / 180;
-    const d = distances[i - 1]; const h = delta / 2; const m = a + h;
-    const sinc = Math.abs(h) < 1e-6 ? 1 - h * h / 6 : Math.sin(h) / h;
-    const [x, y] = nodes.at(-1); nodes.push([x + d * sinc * Math.sin(m), y + d * sinc * Math.cos(m)]); kappa.push(delta / d);
+function demoCurve(pitchDegrees, distancesMillimeters) {
+  // Dữ liệu mô phỏng: bốn góc được tạo trong cùng một lần tick.
+  const sensorNames = ['P1', 'P2', 'P3', 'P4'];
+  const pitchesBySensor = {};
+  const statusesBySensor = {};
+  for (let sensorIndex = 0; sensorIndex < sensorNames.length; sensorIndex++) {
+    const sensorName = sensorNames[sensorIndex];
+    pitchesBySensor[sensorName] = pitchDegrees[sensorIndex];
+    statusesBySensor[sensorName] = 'OK';
   }
-  return { order: ['P4', 'P3', 'P2', 'P1'], nodes_mm: nodes, kappa_per_mm: kappa };
+  const result = reconstructSpine2D({
+    pitchDeg: pitchesBySensor,
+    sensorStatus: statusesBySensor,
+    distances: {
+      d12: distancesMillimeters[0],
+      d23: distancesMillimeters[1],
+      d34: distancesMillimeters[2]
+    },
+    unit: 'mm',
+    frameValid: true,
+    synchronized: true
+  });
+  return toTelemetryCurve(result);
 }
 async function startSimulator({ url, password, deviceId = 'esp32_01', preflightMs = 2000, ca }) {
   const bootId = `b_${randomUUID().replaceAll('-', '').slice(0, 16)}`; const baseTime = process.hrtime.bigint();
@@ -88,16 +103,17 @@ async function startSimulator({ url, password, deviceId = 'esp32_01', preflightM
     elapsed += dt; sampleSeq++;
     pitch = [32 + 8 * Math.sin((nowUs - startUs) / 4000000), 22, 12, 5];
     if (referenceMode && snapshot.reference) {
-      const metric = Math.abs(wrap(pitch[0] - snapshot.reference.pitch_deg[0]));
+      const metric = Math.abs(wrapDegrees(pitch[0] - snapshot.reference.pitch_deg[0]));
       histogram[Math.min(5, Math.floor(metric / 5))] += dt; validMetric += dt;
     }
     if (Date.now() - lastData >= interval) {
       lastData = Date.now();
+      const curve = demoCurve(pitch, snapshot.distances_mm);
       publish('data', { ...envelope(), session_id: sessionId, sample_seq: sampleSeq, telemetry_seq: ++telemetrySeq,
         config_rev: snapshot.config_rev, geometry_rev: snapshot.geometry_rev, calibration_rev: snapshot.calibration_rev,
         reference_rev: snapshot.reference_rev, algorithm_version: snapshot.algorithm_version, pitch_deg: pitch,
-        relative_deg: pitch.slice(0, 3).map((p, i) => wrap(p - pitch[i + 1])), sensor_quality: ['OK', 'OK', 'OK', 'OK'],
-        curve_valid: true, metric_valid: referenceMode && !!snapshot.reference, curve: demoCurve(pitch, snapshot.distances_mm) });
+        relative_deg: pitch.slice(0, 3).map((pitchDegrees, sensorIndex) => wrapDegrees(pitchDegrees - pitch[sensorIndex + 1])), sensor_quality: ['OK', 'OK', 'OK', 'OK'],
+        curve_valid: curve !== null, metric_valid: referenceMode && !!snapshot.reference, curve });
     }
     if (Date.now() - lastSummary >= 5000) { lastSummary = Date.now(); summary(false); }
   }, 20);

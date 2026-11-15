@@ -1,164 +1,144 @@
-
 #include "angle_calculator.h"
-
 #include <Arduino.h>
 #include <math.h>
 
-// Complementary filter time constant (seconds)
-static constexpr float FILTER_TAU = 0.5f;
+// Hằng số thời gian của bộ lọc và khoảng cách thời gian lớn nhất giữa hai mẫu.
+static constexpr float FILTER_TIME_CONSTANT_SECONDS = 0.5f;
+static constexpr float MAXIMUM_SAMPLE_INTERVAL_SECONDS = 0.2f;
+static constexpr float DEGREES_PER_RADIAN = 180.0f / PI;
 
-// Maximum acceptable time gap (seconds)
-static constexpr float MAX_DT = 0.2f;
-
-static constexpr float RAD_TO_DEGREE = 180.0f / PI;
-
-// Internal state for each MPU
+// Mỗi cảm biến cần nhớ góc và thời điểm của lần đo trước để dự đoán góc mới.
 struct FilterState {
-    float pitch = 0.0f;
-    uint32_t lastTimestamp = 0;
+    float pitchDegrees = 0.0f;
+    uint32_t lastTimestampMicroseconds = 0;
     bool initialized = false;
 };
 
 static FilterState filterStates[4];
 
-// Normalize angle to [-180, 180)
-static float normalizeAngle(float angle) {
-    while (angle >= 180.0f) angle -= 360.0f;
-    while (angle < -180.0f) angle += 360.0f;
-    return angle;
+// Đưa góc về [-180, 180). Ví dụ: 181 độ trở thành -179 độ.
+static float normalizeAngleDegrees(float angleDegrees) {
+    while (angleDegrees >= 180.0f) angleDegrees -= 360.0f;
+    while (angleDegrees < -180.0f) angleDegrees += 360.0f;
+    return angleDegrees;
 }
 
-// Calculate pitch from accelerometer
-static float calculateAccelPitch(const MPUData &data) {
-    return atan2f(
-        -data.accelX,
-        sqrtf(
-            data.accelY * data.accelY +
-            data.accelZ * data.accelZ
-        )
-    ) * RAD_TO_DEGREE;
+// Tính góc từ hướng trọng lực khi cảm biến tương đối đứng yên.
+// atan2 trả radian, nên nhân DEGREES_PER_RADIAN để lấy đơn vị độ.
+// Dấu âm trước accelX là quy ước trục hiện có của F01, cần kiểm chứng khi lắp thật.
+static float calculatePitchFromAccelerometer(const MPUData &reading) {
+    const float accelerationOnYZPlane = sqrtf(
+        reading.accelY * reading.accelY + reading.accelZ * reading.accelZ
+    );
+    return atan2f(-reading.accelX, accelerationOnYZPlane) * DEGREES_PER_RADIAN;
 }
 
-// Estimate pitch for one MPU using complementary filter
-static bool calculateFilteredPitch(
-    uint8_t index,
-    const MPUData &data,
-    float &pitchOut
+static bool calculatePitchWithComplementaryFilter(
+    uint8_t sensorIndex,
+    const MPUData &reading,
+    float &outputPitchDegrees
 ) {
-    if (!data.valid) {
-        filterStates[index].initialized = false;
+    FilterState &filterState = filterStates[sensorIndex];
+
+    // Bước 1: từ chối mẫu lỗi, không biến lỗi đọc thành góc 0 độ.
+    if (!reading.valid) {
+        filterState.initialized = false;
+        return false;
+    }
+    if (!isfinite(reading.accelX) || !isfinite(reading.accelY) ||
+        !isfinite(reading.accelZ) || !isfinite(reading.gyroY)) {
+        filterState.initialized = false;
         return false;
     }
 
-    // Check input values
-    if (!isfinite(data.accelX) ||
-        !isfinite(data.accelY) ||
-        !isfinite(data.accelZ) ||
-        !isfinite(data.gyroY)) {
-        filterStates[index].initialized = false;
-        return false;
-    }
-
-    const float accelMagnitude = sqrtf(
-        data.accelX * data.accelX +
-        data.accelY * data.accelY +
-        data.accelZ * data.accelZ
+    const float accelerationMagnitude = sqrtf(
+        reading.accelX * reading.accelX +
+        reading.accelY * reading.accelY +
+        reading.accelZ * reading.accelZ
     );
-
-    // Reject invalid or severely disturbed acceleration
-    if (accelMagnitude < 0.5f ||
-        accelMagnitude > 1.5f) {
-        filterStates[index].initialized = false;
+    // Đơn vị gia tốc là g. Đây là bộ lọc thô hiện có, chưa xác nhận độ chính xác tư thế.
+    if (accelerationMagnitude < 0.5f || accelerationMagnitude > 1.5f) {
+        filterState.initialized = false;
         return false;
     }
 
-    const float accelPitch = calculateAccelPitch(data);
-    FilterState &state = filterStates[index];
-
-    // First valid sample initializes the filter
-    if (!state.initialized) {
-        state.pitch = accelPitch;
-        state.lastTimestamp = data.timestamp;
-        state.initialized = true;
-
-        pitchOut = state.pitch;
+    // Bước 2: lấy góc từ gia tốc kế. Lần đầu chưa có góc cũ thì dùng trực tiếp góc này.
+    const float accelerometerPitchDegrees = calculatePitchFromAccelerometer(reading);
+    if (!filterState.initialized) {
+        filterState.pitchDegrees = accelerometerPitchDegrees;
+        filterState.lastTimestampMicroseconds = reading.timestamp;
+        filterState.initialized = true;
+        outputPitchDegrees = filterState.pitchDegrees;
         return true;
     }
 
-    // Timestamp from micros(), convert microseconds to seconds
-    const float dt =
-        (uint32_t)(data.timestamp - state.lastTimestamp)
-        * 1e-6f;
-
-    if (dt <= 0.0f || dt > MAX_DT) {
-        state.pitch = accelPitch;
-        state.lastTimestamp = data.timestamp;
-
-        pitchOut = state.pitch;
+    // Bước 3: đổi chênh thời gian từ microsecond sang second.
+    // Phép trừ unsigned vẫn đúng khi bộ đếm micros() 32 bit quay vòng.
+    const float elapsedSeconds =
+        (uint32_t)(reading.timestamp - filterState.lastTimestampMicroseconds) * 1e-6f;
+    if (elapsedSeconds <= 0.0f || elapsedSeconds > MAXIMUM_SAMPLE_INTERVAL_SECONDS) {
+        filterState.pitchDegrees = accelerometerPitchDegrees;
+        filterState.lastTimestampMicroseconds = reading.timestamp;
+        outputPitchDegrees = filterState.pitchDegrees;
         return true;
     }
 
-    // Gyroscope prediction
-    const float gyroPitch = normalizeAngle(
-        state.pitch + data.gyroY * dt
+    // Bước 4: gyroY là vận tốc góc (độ/giây).
+    // Góc dự đoán = góc lần trước + vận tốc góc * số giây đã trôi qua.
+    const float predictedPitchDegrees = normalizeAngleDegrees(
+        filterState.pitchDegrees + reading.gyroY * elapsedSeconds
     );
 
-    // Complementary filter coefficient
-    const float alpha = FILTER_TAU / (FILTER_TAU + dt);
-
-    // Shortest angular difference between measurements
-    const float error = normalizeAngle(
-        accelPitch - gyroPitch
+    // Bước 5: chỉnh dần góc dự đoán về phía góc đo từ trọng lực.
+    // Trọng số gyro lớn giúp tín hiệu mượt; gia tốc kế giúp hạn chế trôi góc.
+    const float gyroscopeWeight =
+        FILTER_TIME_CONSTANT_SECONDS / (FILTER_TIME_CONSTANT_SECONDS + elapsedSeconds);
+    const float correctionDegrees = normalizeAngleDegrees(
+        accelerometerPitchDegrees - predictedPitchDegrees
+    );
+    filterState.pitchDegrees = normalizeAngleDegrees(
+        predictedPitchDegrees + (1.0f - gyroscopeWeight) * correctionDegrees
     );
 
-    // Complementary filter
-    state.pitch = normalizeAngle(
-        gyroPitch + (1.0f - alpha) * error
-    );
-
-    state.lastTimestamp = data.timestamp;
-
-    pitchOut = state.pitch;
+    filterState.lastTimestampMicroseconds = reading.timestamp;
+    outputPitchDegrees = filterState.pitchDegrees;
     return true;
 }
 
 void resetAngleFilter() {
-    for (uint8_t i = 0; i < 4; i++) {
-        filterStates[i] = FilterState{};
+    for (uint8_t sensorIndex = 0; sensorIndex < 4; sensorIndex++) {
+        filterStates[sensorIndex] = FilterState{};
     }
 }
 
-void filterMPUData(
-    const MPUData raw[4],
-    ProcessedMPUData *out
-) {
-    if (raw == nullptr || out == nullptr) {
+void filterMPUData(const MPUData rawReadings[4], ProcessedMPUData *processedData) {
+    if (rawReadings == nullptr || processedData == nullptr) {
         return;
     }
 
-    // Timestamp of completed acquisition frame
-    out->timestamp = micros();
-
-    // Process each MPU independently
-    for (uint8_t i = 0; i < 4; i++) {
-        float pitch = NAN;
-
-        bool valid = calculateFilteredPitch(
-            i, raw[i], pitch
+    processedData->timestamp = micros();
+    for (uint8_t sensorIndex = 0; sensorIndex < 4; sensorIndex++) {
+        float pitchDegrees = NAN;
+        const bool sensorIsValid = calculatePitchWithComplementaryFilter(
+            sensorIndex, rawReadings[sensorIndex], pitchDegrees
         );
-
-        out->pitch[i] = valid ? pitch : NAN;
-        out->status[i] = valid ? 1 : 0;
+        processedData->pitch[sensorIndex] = sensorIsValid ? pitchDegrees : NAN;
+        processedData->status[sensorIndex] = sensorIsValid ? 1 : 0;
     }
 
-    // Relative angles between adjacent sensors
-    for (uint8_t i = 0; i < 3; i++) {
-        if (out->status[i] && out->status[i + 1]) {
-            out->relative[i] = normalizeAngle(
-                out->pitch[i + 1] - out->pitch[i]
+    // QUAN TRỌNG: giữ quy ước legacy hiện có của F01: góc dưới trừ góc trên.
+    // Contract SPT v2/F02.1 dùng chiều ngược lại: góc trên trừ góc dưới.
+    // Adapter F02.1 tính lại từ pitch[], không lấy relative[] legacy này.
+    for (uint8_t upperSensorIndex = 0; upperSensorIndex < 3; upperSensorIndex++) {
+        const uint8_t lowerSensorIndex = upperSensorIndex + 1;
+        if (processedData->status[upperSensorIndex] && processedData->status[lowerSensorIndex]) {
+            const float upperPitchDegrees = processedData->pitch[upperSensorIndex];
+            const float lowerPitchDegrees = processedData->pitch[lowerSensorIndex];
+            processedData->relative[upperSensorIndex] = normalizeAngleDegrees(
+                lowerPitchDegrees - upperPitchDegrees
             );
         } else {
-            out->relative[i] = NAN;
+            processedData->relative[upperSensorIndex] = NAN;
         }
     }
 }

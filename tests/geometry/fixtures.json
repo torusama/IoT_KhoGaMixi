@@ -1,0 +1,9 @@
+{
+  "source": "Simulation — synthetic T04 fixtures, not hardware measurements",
+  "straight": [0, 0, 0, 0],
+  "tilted": [30, 30, 30, 30],
+  "cShape": [30, 20, 10, 0],
+  "sShape": [0, 15, 0, 15],
+  "reverse": [-30, -20, -10, 0],
+  "reference": [32, 22, 12, 5]
+}

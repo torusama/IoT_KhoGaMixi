@@ -1,0 +1,5 @@
+Hướng dẫn đấu ESP32, TCA9548A, bốn MPU6050 và nạp firmware:
+Xem README.md trong cùng thư mục hardware.
+
+Trạng thái nhận dữ liệu thật và các phần còn thiếu:
+Xem ../docs/device-integration.md.

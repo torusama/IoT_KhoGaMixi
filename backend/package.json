@@ -10,7 +10,8 @@
     "broker": "node --env-file-if-exists=.env scripts/dev-broker.js",
     "broker:config": "node --env-file-if-exists=.env scripts/mosquitto-config.js",
     "simulator": "node --env-file-if-exists=.env scripts/simulator.js",
-    "test": "node --test ../tests/backend/*.test.js",
+    "test": "node --test ../tests/backend/*.test.js ../tests/geometry/*.test.js",
+    "test:geometry": "node --test ../tests/geometry/*.test.js",
     "test:firebase": "firebase emulators:exec --only database --project demo-spt --config integrations/firebase/firebase.json \"node scripts/firebase-test-runner.js\"",
     "emulators": "firebase emulators:start --only database --project demo-spt --config integrations/firebase/firebase.json",
     "check": "node scripts/check.js"

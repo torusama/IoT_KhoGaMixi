@@ -1,12 +1,16 @@
 const fs=require('node:fs');
 const model=fs.readFileSync('model.js','utf8').replace(/if \(typeof module !== 'undefined'\)[\s\S]*$/, '');
-const widget=fs.readFileSync('widget.vue','utf8');
+// Embed the same UMD core used by Node tests and the standalone geometry demo.
+// Shadow module so Node-RED's widget compiler always takes the browser branch.
+const geometry=fs.readFileSync('../../shared/geometry/spine2d.js','utf8');
+const widget=fs.readFileSync('widget.vue','utf8').replace('/* F02.1_CORE */',
+  '(function(){const module=undefined;\n'+geometry+'\n})();');
 const fonts=[['BeVietnamPro-Regular.ttf',400],['BeVietnamPro-SemiBold.ttf',600]].map(([file,weight])=>`@font-face{font-family:'Be Vietnam Pro';font-style:normal;font-weight:${weight};font-display:swap;src:url(data:font/ttf;base64,${fs.readFileSync('fonts/'+file).toString('base64')}) format('truetype');}`).join('\n');
 const styles=fonts+'\n'+fs.readFileSync('styles.css','utf8');
 const nodes=[
 {id:'f062',type:'tab',label:'F06.2 Smart Posture frontend',disabled:false,info:'Isolated demo and explicit F06.1 integration links.'},
 {id:'base062',type:'ui-base',name:'Smart Posture Tracker',path:'/spt',appIcon:'',includeClientData:true,acceptsClientConfig:['ui-control','ui-notification'],showPathInSidebar:false,headerContent:'dashboard',navigationStyle:'fixed',titleBarStyle:'default'},
-{id:'theme062',type:'ui-theme',name:'SPT',colors:{surface:'#ffffff',primary:'#7186c9',bgPage:'#f5f6fb',groupBg:'#f5f6fb',groupOutline:'#f5f6fb'},sizes:{density:'default',pagePadding:'12px',groupGap:'12px',groupBorderRadius:'12px',widgetGap:'12px'}},
+{id:'theme062',type:'ui-theme',name:'SPT',colors:{surface:'#ffffff',primary:'#34735e',bgPage:'#f5f7f4',groupBg:'#f5f7f4',groupOutline:'#f5f7f4'},sizes:{density:'default',pagePadding:'12px',groupGap:'12px',groupBorderRadius:'12px',widgetGap:'12px'}},
 {id:'style062',type:'ui-template',z:'f062',group:'',page:'',ui:'base062',name:'SPT shared typography and theme',format:styles,templateScope:'site:style',storeOutMessages:false,passthru:false,resendOnRefresh:false,x:430,y:380,wires:[[]]},
 {id:'tick062',type:'inject',z:'f062',name:'One second / demo tick',props:[{p:'payload'}],repeat:'1',once:true,onceDelay:0.2,payload:'{"kind":"tick"}',payloadType:'json',x:150,y:100,wires:[['state062']]},
 {id:'in062',type:'link in',z:'f062',name:'F06.1 normalized events and ACK',links:[],x:105,y:180,wires:[['state062']]},
@@ -14,7 +18,8 @@ const nodes=[
 {id:'out062',type:'link out',z:'f062',name:'F06.1 command adapter OUT',mode:'link',links:[],x:765,y:180,wires:[]}
 ];
 ['Dashboard','History','Progress','Settings'].forEach((name,i)=>{
- nodes.push({id:'p'+i,type:'ui-page',name,ui:'base062',path:'/'+name.toLowerCase(),icon:['view-dashboard','history','chart-line','cog'][i],layout:'grid',theme:'theme062',breakpoints:[{name:'Default',px:'0',cols:'12'},{name:'Tablet',px:'576',cols:'12'},{name:'Desktop',px:'1024',cols:'12'}],order:i+1,className:'',visible:true,disabled:false});
+ const pageTitle=['Tổng quan','Nhật ký','Tiến trình','Cài đặt'][i];
+ nodes.push({id:'p'+i,type:'ui-page',name:pageTitle,ui:'base062',path:'/'+name.toLowerCase(),icon:['view-dashboard','history','chart-line','cog'][i],layout:'grid',theme:'theme062',breakpoints:[{name:'Default',px:'0',cols:'12'},{name:'Tablet',px:'576',cols:'12'},{name:'Desktop',px:'1024',cols:'12'}],order:i+1,className:'',visible:true,disabled:false});
  nodes.push({id:'g'+i,type:'ui-group',name,page:'p'+i,width:'12',height:'0',order:1,showTitle:false,className:'',visible:true,disabled:false,groupType:'default'});
  nodes.push({id:'u'+i,type:'ui-template',z:'f062',group:'g'+i,page:'',ui:'',name:'F06.2 '+name,order:1,width:12,height:0,head:'',format:widget.replace('PAGE_NAME',JSON.stringify(name)),storeOutMessages:true,passthru:false,resendOnRefresh:true,templateScope:'local',className:'',x:825,y:80+i*55,wires:[['state062']]});
 });

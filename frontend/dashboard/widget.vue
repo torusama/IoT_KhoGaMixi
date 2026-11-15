@@ -1,31 +1,53 @@
 <template>
 <div class="spt" v-if="s">
-  <div class="banner" :class="{prod:s.mode!=='demo'}">{{s.mode==='demo'?'DEMO MODE — Simulated Data':'PRODUCTION — chờ adapter F06.1'}}</div>
-  <div class="heading"><div><span class="eyebrow">SMART POSTURE TRACKER</span><h1>{{title}}</h1></div><div class="badges"><span>{{s.connection==='online'?'● Online':'● Offline'}}</span><span>{{s.session==='active'?'Phiên đang đo':'Chưa có phiên'}}</span></div></div>
+  <div class="page-topline"><span class="brand-caption"><i class="brand-dot"></i> SMART POSTURE TRACKER</span><span class="banner" :class="{prod:s.mode!=='demo'}">{{s.mode==='demo'?'Simulation · Dữ liệu mô phỏng':'Chưa kết nối thiết bị thật'}}</span></div>
+  <div class="heading"><div><span class="eyebrow">{{page==='Dashboard'?'KHÔNG GIAN THEO DÕI CỦA BẠN':'GÓC NHÌN CÁ NHÂN'}}</span><h1>{{title}}</h1><p class="page-description">{{page==='Dashboard'?'Hiểu chuyển động của lưng. Theo dõi từng thay đổi nhỏ.':page==='History'?'Nhìn lại các phiên theo dõi và ghi chú của bạn.':page==='Progress'?'Quan sát thay đổi theo thời gian, trong cùng điều kiện đo.':'Thiết lập cảm biến và những lời nhắc phù hợp với bạn.'}}</p></div><div class="heading-date"><span>{{date(s.updated || Date.now()).split(',')[0]}}</span><span class="connection-pill" :class="{offline:s.connection!=='online'}"><i></i>{{s.mode==='demo'?'Thiết bị mô phỏng':s.connection==='online'?'Thiết bị đã kết nối':'Đang chờ thiết bị'}}</span></div></div>
   <div v-if="s.error" class="alert" role="alert">{{s.error}}</div><div v-if="s.notice" class="notice">{{s.notice}}</div>
   <template v-if="page==='Dashboard'">
-    <div class="session-strip card">
-      <div class="session-clock"><span class="metric-icon">◷</span><div><small>Phiên hiện tại</small><strong>{{s.pending?'Đang chờ xác nhận':s.session==='active'?duration(Date.now()-s.started):'Sẵn sàng'}}</strong><p>Đo hợp lệ: {{duration(s.validMs)}}</p></div></div>
-      <div class="actions session-actions"><button @click="command('START_SESSION')" :disabled="!!s.pending || s.session!=='idle'">▶ &nbsp; Bắt đầu phiên</button><button class="secondary" @click="command('STOP_SESSION')" :disabled="!!s.pending || s.session!=='active'">■ &nbsp; Kết thúc phiên</button></div>
-      <div class="sensor-strip"><span v-for="n in 4" :key="n" :class="{unavailable:s.sensorStatus?.[n-1]!=='ok'}"><i></i>P{{n}}</span><small>Cập nhật {{date(s.updated)}}</small></div>
+    <div class="overview-metrics">
+      <div class="overview-metric"><span class="overview-icon mint">◷</span><div><small>Thời gian phiên</small><strong>{{s.session==='active'?clockTime(Date.now()-s.started):'00:00'}}</strong><span>{{s.session==='active'?'Phiên đang diễn ra':'Sẵn sàng khi bạn bắt đầu'}}</span></div></div>
+      <div class="overview-metric"><span class="overview-icon lilac">✓</span><div><small>Thời gian đo hợp lệ</small><strong>{{clockTime(s.validMs)}}</strong><span>Không tính khoảng mất dữ liệu</span></div></div>
+      <div class="overview-metric"><span class="overview-icon peach">⌁</span><div><small>Cảm biến sẵn sàng</small><strong>{{(s.sensorStatus || []).filter(status=>status==='ok').length}} <em>/ 4</em></strong><span>Bốn vị trí dọc theo lưng</span></div></div>
+      <div class="overview-metric"><span class="overview-icon sand">♧</span><div><small>Mốc cá nhân</small><strong class="metric-word">{{s.reference?'Đã thiết lập':'Chưa thiết lập'}}</strong><span>{{s.reference?'Có thể so sánh với mốc':'Lưu mốc trước khi so sánh'}}</span></div></div>
     </div>
     <div class="dashboard-layout">
       <div class="dashboard-main">
-        <div class="card curve"><div class="card-heading"><div><span class="eyebrow">MÔ PHỎNG 2D</span><h2>Đường cong bề mặt lưng</h2></div><span class="data-badge" :class="{unavailable:!s.valid}">{{s.valid?'● Dữ liệu hợp lệ':'● Không đủ dữ liệu'}}</span></div>
-          <div class="curve-body"><div class="curve-description"><span class="curve-mark">◌</span><h3>Theo dõi theo vùng</h3><p>Bốn vị trí từ lưng trên đến lưng dưới, nối bằng ba đoạn cong ước lượng.</p><label class="reference-toggle"><input type="checkbox" v-model="showReference"> Hiện mốc cá nhân</label><div class="curve-legend"><span><i class="legend-line"></i> Hiện tại</span><span v-if="s.reference"><i class="legend-line reference"></i> Mốc cá nhân</span></div></div>
-            <div v-if="!s.valid || s.mode!=='demo'" class="empty curve-empty">Không đủ dữ liệu hợp lệ để dựng đường cong.</div>
-            <svg v-else viewBox="-120 -240 260 260" aria-label="Đường cong bề mặt lưng từ P4 đến P1"><defs><pattern id="curve-grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M 40 0 L 0 0 0 40" fill="none" stroke="#e5e8f2" stroke-width=".7"/></pattern></defs><rect x="-120" y="-240" width="260" height="260" fill="url(#curve-grid)"/><line x1="0" y1="-240" x2="0" y2="20" stroke="#ccd2e6" stroke-width="1" stroke-dasharray="3 4"/><path v-if="showReference && refCurve" :d="refCurve.path" class="refline"/><path :d="curve.path" class="livepath"/><g v-for="(pt,i) in curve.points" :key="i"><circle :cx="pt[0]" :cy="pt[1]" r="3.4"/><text :x="pt[0]+9" :y="pt[1]+2">P{{4-i}}</text></g></svg>
-          </div><p class="curve-disclaimer">Mô phỏng đường cong bề mặt lưng 2D ước lượng — không phải kết quả chẩn đoán y khoa.</p>
+        <div class="card curve"><div class="card-heading"><div><span class="eyebrow">MỘT GÓC NHÌN VỀ TƯ THẾ</span><h2>Lưng của bạn lúc này</h2><p>Bốn điểm đo. Một đường lưng liền mạch.</p></div><span class="data-badge" :class="{unavailable:!s.valid}"><i></i>{{s.valid?'Đủ dữ liệu mô phỏng':'Thiếu dữ liệu'}}</span></div>
+          <div class="curve-toolbar"><div class="curve-legend"><span><i class="legend-line"></i> Hiện tại</span><span v-if="s.reference"><i class="legend-line reference"></i> Mốc của bạn</span></div><label class="reference-toggle"><input type="checkbox" v-model="showReference" :disabled="!s.reference"> So với mốc cá nhân</label></div>
+          <div class="curve-stage">
+            <div v-if="!s.valid || s.mode!=='demo' || !curve" class="empty curve-empty"><span class="empty-symbol">⌁</span><h3>{{s.connection==='offline'?'Chưa có kết nối':'Đang chờ đủ bốn cảm biến'}}</h3><p>Đường lưng sẽ xuất hiện khi dữ liệu hợp lệ.<br>Bạn vẫn có thể xem riêng các cảm biến đang hoạt động.</p></div>
+            <template v-else>
+              <div class="view-caption"><span class="view-dot"></span> GÓC NHÌN BÊN HÔNG</div>
+              <svg v-bind="{viewBox:curve.viewBox}" preserveAspectRatio="xMidYMid meet" aria-label="Minh họa bề mặt lưng nhìn từ bên hông, bốn cảm biến P4 đến P1">
+                <path :d="curve.bodyPath" class="body-silhouette" aria-hidden="true"/>
+                <ellipse :cx="curve.head.x" :cy="curve.head.y" :rx="curve.head.radiusX" :ry="curve.head.radiusY" class="body-head" aria-hidden="true"/>
+                <path :d="curve.shoulderPath" class="body-detail" aria-hidden="true"/>
+                <line :x1="curve.points[0][0]" :y1="curve.points[3][1]-12" :x2="curve.points[0][0]" :y2="curve.points[0][1]+12" class="vertical-reference"/>
+                <path v-if="showReference && refCurve" :d="refCurve.path" class="refline"/>
+                <path :d="curve.path" class="livepath"/>
+                <g v-for="(point,index) in curve.points" :key="index" class="sensor-marker" :class="{highlighted:activeSensor===3-index}" @mouseenter="activeSensor=3-index" @mouseleave="activeSensor=null">
+                  <circle :cx="point[0]" :cy="point[1]" r="6" class="sensor-halo"/><circle :cx="point[0]" :cy="point[1]" r="2.6" class="sensor-dot"/>
+                  <line :x1="point[0]-10" :y1="point[1]" :x2="curve.labelX+8" :y2="point[1]" class="sensor-leader"/>
+                  <text :x="curve.labelX" :y="point[1]-3" text-anchor="end" class="sensor-name">{{['Lưng dưới','Giữa dưới','Giữa trên','Lưng trên'][index]}}</text>
+                  <text :x="curve.labelX" :y="point[1]+8" text-anchor="end" class="sensor-angle">P{{4-index}} · {{fmt(s.pitch[3-index])}}°</text>
+                </g>
+              </svg>
+              <div class="view-orientation">Sau <span>⟶</span> Trước cơ thể</div>
+            </template>
+          </div>
+          <div class="curve-footer"><span><i></i> Minh họa từ dữ liệu mô phỏng</span><span>Không dùng để chẩn đoán y khoa</span></div>
+          <div v-if="s.mode==='demo'" class="posture-presets"><span>Khám phá chuyển động</span><div class="preset-buttons"><button v-for="scenario in scenarios.slice(0,3)" :key="scenario[0]" class="preset-button" :class="{active:s.scenario===scenario[0]}" :aria-pressed="s.scenario===scenario[0]" @click="dispatch({kind:'scenario',value:scenario[0]})"><svg viewBox="0 0 24 30" aria-hidden="true"><circle cx="13" cy="5" r="3"/><path :d="scenario[0]==='straight'?'M12 12 L12 26':scenario[0]==='c'?'M15 12 Q7 16 12 26':'M14 12 C4 16 19 21 10 26'"/></svg>{{scenario[1]}}</button></div></div>
         </div>
-        <div class="card signal-card"><div class="card-heading"><div><span class="eyebrow">TÍN HIỆU GẦN ĐÂY</span><h2>Góc theo thời gian</h2></div><span class="muted">Tối đa 120 mẫu</span></div><div class="series"><label v-for="(n,i) in names" :key="n"><input type="checkbox" v-model="selected" :value="i"> {{n}}</label></div><div class="plot-wrap"><span class="plot-unit">Góc (°)</span><div class="signal-chart"><div class="y-labels" aria-hidden="true"><span>30°</span><span>0°</span><span>−30°</span></div><svg class="timeline" viewBox="0 0 600 180" preserveAspectRatio="none" aria-label="Diễn biến các góc theo thời gian"><line v-for="y in [30,60,90,120,150]" :key="y" x1="0" :y1="y" x2="600" :y2="y" stroke="#e4e8ee" stroke-width="1"/><path v-for="i in selected" :key="i" :d="timeline(i)" fill="none" :stroke="colors[i]" stroke-width="2"/></svg></div><div class="chart-axis"><span>{{timeLabel(s.samples?.[0]?.t)}}</span><span>{{timeLabel(s.samples?.[s.samples.length-1]?.t)}}</span></div></div><div class="legend"><span v-for="i in selected" :key="i" :style="{color:colors[i]}">● {{names[i]}} </span></div><p class="muted">Khoảng trống thể hiện dữ liệu thiếu hoặc không hợp lệ.</p></div>
+        <div class="card signal-card"><div class="card-heading"><div><span class="eyebrow">NHỮNG THAY ĐỔI NHỎ</span><h2>Chuyển động gần đây</h2></div><span class="chart-period">120 mẫu gần nhất</span></div><div class="series"><label v-for="(name,index) in names" :key="name" :style="{'--series-color':colors[index]}"><input type="checkbox" v-model="selected" :value="index"> {{name}}</label></div><div class="plot-wrap"><span class="plot-unit">Góc nghiêng (°)</span><div class="signal-chart"><div class="y-labels" aria-hidden="true"><span>30°</span><span>0°</span><span>−30°</span></div><svg class="timeline" viewBox="0 0 600 180" preserveAspectRatio="none" aria-label="Diễn biến các góc theo thời gian"><line v-for="lineY in [30,60,90,120,150]" :key="lineY" x1="0" :y1="lineY" x2="600" :y2="lineY" stroke="#e4e8ee" stroke-width="1"/><path v-for="index in selected" :key="index" :d="timeline(index)" fill="none" :stroke="colors[index]" stroke-width="2"/></svg></div><div class="chart-axis"><span>{{timeLabel(s.samples?.[0]?.t)}}</span><span>{{timeLabel(s.samples?.[s.samples.length-1]?.t)}}</span></div></div><p class="muted">Khoảng trống trên biểu đồ là lúc dữ liệu chưa hợp lệ.</p></div>
       </div>
       <div class="dashboard-side">
-        <div class="card angles-panel"><div class="card-heading"><div><span class="eyebrow">BỐN VỊ TRÍ</span><h2>Góc nghiêng Pitch</h2></div><span class="muted">Đơn vị: °</span></div><div class="pitch-tiles"><div class="pitch-tile" v-for="(name,i) in ['Lưng trên','Giữa trên','Giữa dưới','Lưng dưới']" :key="name"><small>P{{i+1}}</small><strong>{{finite(s.pitch?.[i])?fmt(s.pitch[i])+'°':'—'}}</strong><span>{{name}}</span><span v-if="s.reference && finite(s.pitch?.[i])">Δ mốc {{fmt(s.pitch[i]-s.reference.pitch[i])}}°</span><span v-if="!finite(s.pitch?.[i])" class="missing-label">Mất dữ liệu</span></div></div><div class="relative-title">Góc tương đối giữa các vùng</div><div class="relative-tiles"><div v-for="(name,i) in ['P1 − P2','P2 − P3','P3 − P4']" :key="name"><small>{{name}}</small><strong>{{finite(s.relative?.[i])?fmt(s.relative[i])+'°':'—'}}</strong></div></div></div>
-        <div class="card reminder-panel"><div class="card-heading"><div><span class="eyebrow">THIẾT BỊ</span><h2>Nhắc rung</h2></div><span class="data-badge" :class="{unavailable:!s.reminder}">{{s.reminder?'Đang bật':'Đang tắt'}}</span></div><p>Điều khiển nhắc nhở cho phiên đo hiện tại.</p><div class="reminder-details"><div><small>Ngưỡng demo</small><b>{{s.demoSettings?.trigger ?? '—'}}°</b></div><div><small>Thời gian chờ</small><b>{{s.demoSettings?.hold ?? '—'}} giây</b></div></div><div class="actions reminder-actions"><button class="secondary" @click="command('SET_REMINDER',{enabled:!s.reminder})" :disabled="!!s.pending">{{s.reminder?'Tắt':'Bật'}} nhắc rung</button><button @click="command('TEST_VIBRATION')" :disabled="!!s.pending">Kiểm tra rung</button></div><p class="muted">Các nút trong demo gửi lệnh mô phỏng và chờ ACK giả lập.</p></div>
-        <div class="card connection-card"><span class="eyebrow">TRẠNG THÁI THIẾT BỊ</span><h2>{{s.connection==='online'?'Đang kết nối':'Chưa kết nối'}}</h2><p>{{s.deviceId||'Chưa chọn thiết bị'}} · {{s.valid?'Đủ bốn cảm biến':'Kiểm tra cảm biến'}}</p></div>
+        <div class="card session-panel"><span class="eyebrow">DÀNH THỜI GIAN CHO BẠN</span><div class="session-panel-title"><h2>{{s.session==='active'?'Bạn đang theo dõi':'Bắt đầu một phiên mới'}}</h2><span class="session-state" :class="{running:s.session==='active'}">{{s.pending?'Đang xử lý':s.session==='active'?'Đang đo':'Sẵn sàng'}}</span></div><p>Ngồi thoải mái, kiểm tra cảm biến và bắt đầu khi bạn sẵn sàng.</p><div class="session-big-clock">{{s.session==='active'?clockTime(Date.now()-s.started):'00:00'}}</div><button v-if="s.session!=='active'" class="start-session" @click="command('START_SESSION')" :disabled="!!s.pending || !s.valid || s.connection!=='online'"><span>▶</span> {{s.pending?'Đang chờ xác nhận…':'Bắt đầu theo dõi'}} <span>↗</span></button><button v-else class="start-session stop-session" @click="command('STOP_SESSION')" :disabled="!!s.pending"><span>■</span> {{s.pending?'Đang kết thúc…':'Kết thúc phiên'}}</button><p class="session-caption">{{s.mode==='demo'?'Phiên trải nghiệm · Không ghi dữ liệu thiết bị thật':'Trạng thái chỉ đổi sau khi thiết bị xác nhận'}}</p></div>
+        <div class="card angles-panel"><div class="card-heading"><div><span class="eyebrow">BỐN ĐIỂM KẾT NỐI</span><h2>Từng vùng lưng</h2></div><span class="muted">Góc nghiêng · °</span></div><div class="sensor-readings"><button class="sensor-reading" v-for="(name,index) in ['Lưng trên','Giữa trên','Giữa dưới','Lưng dưới']" :key="name" :class="{selected:activeSensor===index,unavailable:s.sensorStatus?.[index]!=='ok'}" @mouseenter="activeSensor=index" @mouseleave="activeSensor=null" @focus="activeSensor=index" @blur="activeSensor=null"><span class="sensor-number" :style="{'--sensor-color':colors[index]}">P{{index+1}}</span><span class="sensor-reading-name"><b>{{name}}</b><small>{{s.sensorStatus?.[index]==='ok'?'Có dữ liệu':'Chưa có dữ liệu'}}</small></span><strong>{{finite(s.pitch?.[index])?fmt(s.pitch[index])+'°':'—'}}</strong></button></div><details class="relative-details"><summary>Góc giữa hai vùng lưng <span>⌄</span></summary><div class="relative-tiles"><div v-for="(name,index) in ['Trên − giữa trên','Giữa trên − giữa dưới','Giữa dưới − dưới']" :key="name"><small>{{name}}</small><strong>{{finite(s.relative?.[index])?fmt(s.relative[index])+'°':'—'}}</strong></div></div><p>Góc của cảm biến phía trên trừ góc cảm biến phía dưới.</p></details><div class="sensor-updated">Cập nhật {{timeLabel(s.updated)}} <span>•</span> {{s.mode==='demo'?'Mô phỏng':'Thiết bị'}}</div></div>
+        <div class="card reference-panel"><span class="eyebrow">MỘT ĐIỂM ĐỂ SO SÁNH</span><h2>Mốc của riêng bạn</h2><p>{{s.reference?'Mốc đã được lưu. Bật so sánh để xem thay đổi trên đường lưng.':'Lưu tư thế hiện tại làm mốc để quan sát thay đổi trong những lần đo sau.'}}</p><button class="secondary" @click="command('SAVE_REFERENCE')" :disabled="!!s.pending || !s.valid || s.session!=='idle'">{{s.reference?'Đặt lại mốc cá nhân':'＋ Lưu mốc cá nhân'}}</button><small>{{s.session==='active'?'Kết thúc phiên để thay đổi mốc.':'Ngồi thoải mái trước khi lưu. Mốc không phải tư thế chuẩn y khoa.'}}</small></div>
+        <div class="card reminder-panel"><div class="card-heading"><div><span class="eyebrow">MỘT LỜI NHẮC NHẸ</span><h2>Nhắc rung</h2></div><button class="toggle-switch" role="switch" :aria-checked="s.reminder" :aria-label="s.reminder?'Tắt nhắc rung':'Bật nhắc rung'" :class="{enabled:s.reminder}" @click="command('SET_REMINDER',{enabled:!s.reminder})" :disabled="!!s.pending || s.connection!=='online'"><span></span></button></div><p>{{s.reminder?'Lời nhắc đang bật trong bản mô phỏng.':'Bật lời nhắc để trải nghiệm tính năng nhắc thay đổi tư thế.'}}</p><div class="reminder-details"><div><small>Ngưỡng mô phỏng</small><b>{{s.demoSettings?.trigger ?? '—'}}°</b></div><div><small>Thời gian duy trì</small><b>{{s.demoSettings?.hold ?? '—'}} giây</b></div></div><button class="text-button" @click="command('TEST_VIBRATION')" :disabled="!!s.pending || s.connection!=='online'">Thử nhắc rung <span>↗</span></button></div>
       </div>
     </div>
-    <div v-if="s.mode==='demo'" class="card"><h2>Kịch bản demo</h2><div class="actions"><button class="secondary" v-for="x in scenarios" :key="x[0]" @click="dispatch({kind:'scenario',value:x[0]})">{{x[1]}}</button></div><label>Phản hồi lệnh <select :value="s.ackMode" @change="dispatch({kind:'ackMode',value:$event.target.value})"><option value="success">ACK thành công</option><option value="rejected">ACK từ chối</option><option value="timeout">Timeout</option></select></label></div>
+    <details v-if="s.mode==='demo'" class="simulation-tools"><summary>Tùy chọn trải nghiệm <span>Thử mất cảm biến, mất kết nối hoặc phản hồi lệnh</span></summary><div class="actions"><button class="secondary" v-for="scenario in scenarios.slice(3)" :key="scenario[0]" @click="dispatch({kind:'scenario',value:scenario[0]})">{{scenario[1]}}</button><button class="secondary" @click="dispatch({kind:'scenario',value:'straight'})">Khôi phục dữ liệu</button></div><label>Phản hồi lệnh mô phỏng <select :value="s.ackMode" @change="dispatch({kind:'ackMode',value:$event.target.value})"><option value="success">Thành công</option><option value="rejected">Bị từ chối</option><option value="timeout">Không phản hồi</option></select></label></details>
   </template>
   <template v-if="page==='History'">
     <div class="section"><div><span class="eyebrow">NHẬT KÝ PHIÊN ĐO</span><h2>Nhìn lại các phiên của bạn</h2></div><span class="muted">{{filtered.length}} phiên</span></div>
@@ -62,9 +84,252 @@
 </template>
 <script>
 export default {
- data(){return {progressPeriod:'7 ngày',noteDraft:'',formLoaded:false,form:{distances:[70,70,70],trigger:15,release:10,hold:30,cooldown:60,emailHold:180,metric:'p1',emailEnabled:false,email:''},demoRates:[25,23,21,24,18,15,14],demoEvents:[5.2,4.8,4.2,4.5,3.5,3.0,2.8],demoAngles:[[12,11,10,12,9,8,7],[8,9,8,7,8,7,6],[6,6,7,6,5,6,5]],showReference:true,selected:[0,1,2,3],from:'',to:'',chosen:null,names:['P1','P2','P3','P4','P1–P2','P2–P3','P3–P4'],colors:['#536a9e','#76a891','#8998d4','#c788a6','#ba715a','#4d8b82','#687688'],scenarios:[['straight','Gần thẳng'],['c','Cong C'],['s','Cong S'],['missing','Thiếu cảm biến'],['disconnect','Mất kết nối']]}},
- watch:{s:{immediate:true,handler(value){if(!this.formLoaded && value?.demoSettings){this.form={...value.demoSettings,distances:[...value.distances]};this.formLoaded=true}}}},
- computed:{periodSummary(){return this.progressPeriod==='Phiên'?{time:'42 phút',sessions:1,events:2,vibrations:1}:this.progressPeriod==='Ngày'?{time:'1 giờ 5 phút',sessions:2,events:4,vibrations:2}:{time:'5 giờ 20 phút',sessions:7,events:19,vibrations:12}},visibleRates(){return this.progressPeriod==='7 ngày'?this.demoRates:this.demoRates.slice(-1)},visibleEvents(){return this.progressPeriod==='7 ngày'?this.demoEvents:this.demoEvents.slice(-1)},s(){return this.msg?.payload},page(){return PAGE_NAME},title(){return {Dashboard:'Tổng quan',History:'Lịch sử',Progress:'Tiến trình',Settings:'Cài đặt'}[this.page]},curve(){return this.geometry(this.s?.pitch)},refCurve(){return this.geometry(this.s?.reference?.pitch)},filtered(){return (this.s.history||[]).filter(x=>{let d=new Date(x.started).toLocaleDateString('en-CA',{timeZone:'Asia/Ho_Chi_Minh'});return (!this.from||d>=this.from)&&(!this.to||d<=this.to)}).sort((a,b)=>b.started-a.started)},bins(){let a=[0,0,0,0,0,0],v=this.chosen;if(!v?.reference)return a;for(let i=1;i<v.samples.length;i++){let x=v.samples[i-1],y=v.samples[i],dt=y.t-x.t;if(x.pitch&&y.pitch&&dt>0&&dt<=2000)a[Math.min(5,Math.floor(Math.abs(x.pitch[0]-v.reference.pitch[0])/5))]+=dt}return a},binTotal(){return this.bins.reduce((a,b)=>a+b,0)}},
- methods:{timeLabel(t){return t?new Date(t).toLocaleTimeString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',hour:'2-digit',minute:'2-digit',second:'2-digit'}):'--:--'},finite(x){return Number.isFinite(x)},chooseSession(h){this.chosen=h;this.noteDraft=h.note||''},sessionMax(h,i){const a=(h.samples||[]).filter(x=>x.pitch&&Number.isFinite(x.pitch[i]));return a.length?this.fmt(Math.max(...a.map(x=>x.pitch[i]))):'\u2014'},sessionRelative(h,i){const a=(h.samples||[]).filter(x=>x.pitch&&Number.isFinite(x.pitch[i])&&Number.isFinite(x.pitch[i+1]));return a.length?this.fmt(a.reduce((v,x)=>v+x.pitch[i]-x.pitch[i+1],0)/a.length):'\u2014'},historyLine(h,i){let d='',open=false;const arr=h.samples||[];arr.forEach((x,n)=>{const v=x.pitch?.[i];if(!Number.isFinite(v)){open=false;return}const px=arr.length>1?n*600/(arr.length-1):0,py=90-v*2;d+=(open?' L ':' M ')+px+' '+py;open=true});return d},sessionAverage(h,i){const a=h.samples.filter(x=>x.pitch&&Number.isFinite(x.pitch[i]));return a.length?this.fmt(a.reduce((v,x)=>v+x.pitch[i],0)/a.length):'—'},dayLabel(i){const d=new Date(Date.now()-(6-i)*86400000);return d.toLocaleDateString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit'})},demoLine(values){return values.map((v,i)=>(i?'L ':'M ')+(i*100)+' '+(150-v*7)).join(' ')},dispatch(p){this.send({payload:p})},command(c,p={}){this.dispatch({kind:'command',command:c,payload:p})},fmt(x){return Number.isFinite(x)?x.toFixed(1):'—'},date(x){return x?new Date(x).toLocaleString('vi-VN',{timeZone:'Asia/Ho_Chi_Minh'}):'—'},duration(ms){return Math.floor((ms||0)/60000)+' phút '+Math.floor((ms||0)%60000/1000)+' giây'},geometry(p){if(!p||p.length!==4||!p.every(Number.isFinite))return null;let ds=this.s.distances, x=0,y=0,pts=[[0,0]],path='M 0 0';for(let j=3;j>0;j--){let a=p[j]*Math.PI/180,b=p[j-1]*Math.PI/180,d=b-a,L=ds[j-1];for(let k=1;k<=12;k++){let u=k/12,xx,yy;if(Math.abs(d)<1e-7){xx=x+L*u*Math.sin(a);yy=y-L*u*Math.cos(a)}else{xx=x+L*(Math.cos(a)-Math.cos(a+d*u))/d;yy=y-L*(Math.sin(a+d*u)-Math.sin(a))/d}path+=' L '+xx+' '+yy;if(k===12){x=xx;y=yy}}pts.push([x,y])}return {path,points:pts}},timeline(i){let arr=this.s.samples||[],d='',open=false;arr.forEach((x,n)=>{let v=i<4?x.pitch?.[i]:x.relative?.[i-4];if(!Number.isFinite(v)){open=false;return}let px=n*600/119,py=90-v*2;d+=(open?' L ':' M ')+px+' '+py;open=true});return d}}
-}
+  data() {
+    return {
+      activeSensor: null,
+      progressPeriod: '7 ngày',
+      noteDraft: '',
+      formLoaded: false,
+      form: {
+        distances: [70, 70, 70], trigger: 15, release: 10, hold: 30,
+        cooldown: 60, emailHold: 180, metric: 'p1', emailEnabled: false, email: ''
+      },
+      demoRates: [25, 23, 21, 24, 18, 15, 14],
+      demoEvents: [5.2, 4.8, 4.2, 4.5, 3.5, 3.0, 2.8],
+      demoAngles: [[12, 11, 10, 12, 9, 8, 7], [8, 9, 8, 7, 8, 7, 6], [6, 6, 7, 6, 5, 6, 5]],
+      showReference: true,
+      selected: [0, 1, 2, 3],
+      from: '',
+      to: '',
+      chosen: null,
+      names: ['P1', 'P2', 'P3', 'P4', 'P1–P2', 'P2–P3', 'P3–P4'],
+      colors: ['#328a78', '#697fc0', '#bd8b54', '#a77ca9', '#c17162', '#507f91', '#8a9560'],
+      scenarios: [
+        ['straight', 'Gần thẳng'], ['c', 'Cong C'], ['s', 'Cong S'],
+        ['missing', 'Thiếu cảm biến'], ['disconnect', 'Mất kết nối']
+      ]
+    };
+  },
+
+  watch: {
+    s: {
+      immediate: true,
+      handler(state) {
+        if (!this.formLoaded && state?.demoSettings) {
+          this.form = { ...state.demoSettings, distances: [...state.distances] };
+          this.formLoaded = true;
+        }
+      }
+    }
+  },
+
+  computed: {
+    s() { return this.msg?.payload; },
+    page() { return PAGE_NAME; },
+    title() {
+      return { Dashboard: 'Tư thế của bạn, mỗi ngày.', History: 'Nhật ký theo dõi', Progress: 'Tiến trình của bạn', Settings: 'Thiết lập cá nhân' }[this.page];
+    },
+    curve() { return this.geometry(this.s?.pitch); },
+    refCurve() { return this.geometry(this.s?.reference?.pitch); },
+    periodSummary() {
+      if (this.progressPeriod === 'Phiên') return { time: '42 phút', sessions: 1, events: 2, vibrations: 1 };
+      if (this.progressPeriod === 'Ngày') return { time: '1 giờ 5 phút', sessions: 2, events: 4, vibrations: 2 };
+      return { time: '5 giờ 20 phút', sessions: 7, events: 19, vibrations: 12 };
+    },
+    visibleRates() { return this.progressPeriod === '7 ngày' ? this.demoRates : this.demoRates.slice(-1); },
+    visibleEvents() { return this.progressPeriod === '7 ngày' ? this.demoEvents : this.demoEvents.slice(-1); },
+    filtered() {
+      return (this.s.history || []).filter(session => {
+        const sessionDate = new Date(session.started).toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' });
+        return (!this.from || sessionDate >= this.from) && (!this.to || sessionDate <= this.to);
+      }).sort((first, second) => second.started - first.started);
+    },
+    bins() {
+      const histogram = [0, 0, 0, 0, 0, 0];
+      const session = this.chosen;
+      if (!session?.reference) return histogram;
+      for (let index = 1; index < session.samples.length; index++) {
+        const previousSample = session.samples[index - 1];
+        const currentSample = session.samples[index];
+        const elapsedMilliseconds = currentSample.t - previousSample.t;
+        if (previousSample.pitch && currentSample.pitch && elapsedMilliseconds > 0 && elapsedMilliseconds <= 2000) {
+          const deviationDegrees = Math.abs(previousSample.pitch[0] - session.reference.pitch[0]);
+          const binIndex = Math.min(5, Math.floor(deviationDegrees / 5));
+          histogram[binIndex] += elapsedMilliseconds;
+        }
+      }
+      return histogram;
+    },
+    binTotal() { return this.bins.reduce((total, duration) => total + duration, 0); }
+  },
+
+  methods: {
+    finite(value) { return Number.isFinite(value); },
+    fmt(value) { return Number.isFinite(value) ? value.toFixed(1) : '—'; },
+    date(timestamp) {
+      return timestamp ? new Date(timestamp).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—';
+    },
+    timeLabel(timestamp) {
+      return timestamp ? new Date(timestamp).toLocaleTimeString('vi-VN', {
+        timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', second: '2-digit'
+      }) : '--:--';
+    },
+    duration(milliseconds) {
+      const totalSeconds = Math.floor((milliseconds || 0) / 1000);
+      return Math.floor(totalSeconds / 60) + ' phút ' + totalSeconds % 60 + ' giây';
+    },
+    clockTime(milliseconds) {
+      const totalSeconds = Math.floor(Math.max(0, milliseconds || 0) / 1000);
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor(totalSeconds / 60) % 60;
+      const seconds = totalSeconds % 60;
+      const minuteAndSecond = String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+      return hours > 0 ? String(hours).padStart(2, '0') + ':' + minuteAndSecond : minuteAndSecond;
+    },
+    dispatch(payload) { this.send({ payload: payload }); },
+    command(commandType, payload = {}) {
+      this.dispatch({ kind: 'command', command: commandType, payload: payload });
+    },
+
+    // Chỉ đổi kết quả hình học sang SVG. Toàn bộ công thức dựng cung nằm ở core.
+    geometry(pitchDegrees) {
+      if (this.s?.mode !== 'demo') return null;
+      if (!globalThis.Spine2D) { /* F02.1_CORE */ }
+
+      const sensorNames = ['P1', 'P2', 'P3', 'P4'];
+      const distancesMillimeters = this.s.distances;
+      const pitchesBySensor = {};
+      const statusesBySensor = {};
+      for (let sensorIndex = 0; sensorIndex < sensorNames.length; sensorIndex++) {
+        const sensorName = sensorNames[sensorIndex];
+        pitchesBySensor[sensorName] = pitchDegrees?.[sensorIndex];
+        statusesBySensor[sensorName] = this.s.sensorStatus?.[sensorIndex] === 'ok' ? 'OK' : 'INVALID';
+      }
+
+      const result = globalThis.Spine2D.reconstructSpine2D({
+        pitchDeg: pitchesBySensor,
+        sensorStatus: statusesBySensor,
+        distances: {
+          d12: distancesMillimeters?.[0],
+          d23: distancesMillimeters?.[1],
+          d34: distancesMillimeters?.[2]
+        },
+        unit: 'mm',
+        frameValid: this.s.valid === true,
+        synchronized: true // Chỉ cho mô phỏng: bốn góc sinh cùng một lần tick.
+      });
+      if (!result.valid) return null;
+
+      // Giữ nguyên X, đảo Y vì SVG có trục Y hướng xuống màn hình.
+      const points = [];
+      for (const sensorName of ['P4', 'P3', 'P2', 'P1']) {
+        const sensorPoint = result.points[sensorName];
+        points.push([sensorPoint.x, -sensorPoint.y]);
+      }
+      let path = '';
+      for (let pointIndex = 0; pointIndex < result.curvePoints.length; pointIndex++) {
+        const point = result.curvePoints[pointIndex];
+        path += (pointIndex === 0 ? 'M ' : ' L ') + point.x + ' ' + (-point.y);
+      }
+
+      // Phần thân người chỉ là minh họa nhìn từ bên hông, không phải kết quả giải phẫu.
+      // Kích thước minh họa theo chiều dài đường lưng; các điểm cảm biến không bị dịch.
+      const bottomPoint = points[0];
+      const topPoint = points[3];
+      const middlePoint = points[2];
+      const bodyWidth = result.totalLength * 0.32;
+      const head = {
+        x: topPoint[0] + bodyWidth * 0.35,
+        y: topPoint[1] - bodyWidth * 0.48,
+        radiusX: bodyWidth * 0.25,
+        radiusY: bodyWidth * 0.31
+      };
+      let bodyPath = 'M ' + (bottomPoint[0] + 5) + ' ' + (bottomPoint[1] + bodyWidth * 0.3);
+      for (const point of result.curvePoints) {
+        bodyPath += ' L ' + (point.x + 5) + ' ' + (-point.y);
+      }
+      bodyPath += ' Q ' + (topPoint[0] + 12) + ' ' + (topPoint[1] - 14) + ' ' + (topPoint[0] + 25) + ' ' + (topPoint[1] - 7);
+      bodyPath += ' Q ' + (topPoint[0] + bodyWidth) + ' ' + (topPoint[1] + 8) + ' ' + (topPoint[0] + bodyWidth) + ' ' + (topPoint[1] + bodyWidth * 0.6);
+      bodyPath += ' Q ' + (middlePoint[0] + bodyWidth * 0.6) + ' ' + middlePoint[1] + ' ' + (bottomPoint[0] + bodyWidth) + ' ' + (bottomPoint[1] + bodyWidth * 0.3);
+      bodyPath += ' Z';
+      const shoulderPath = 'M ' + (topPoint[0] + bodyWidth * 0.45) + ' ' + (topPoint[1] + 8) + ' Q ' + (topPoint[0] + bodyWidth * 0.8) + ' ' + (topPoint[1] + 25) + ' ' + (middlePoint[0] + bodyWidth * 0.65) + ' ' + middlePoint[1];
+
+      const curveXValues = result.curvePoints.map(point => point.x);
+      const curveYValues = result.curvePoints.map(point => -point.y);
+      const minimumX = Math.min(...curveXValues) - bodyWidth * 1.3;
+      const maximumX = Math.max(...curveXValues) + bodyWidth * 1.3;
+      const minimumY = Math.min(...curveYValues) - bodyWidth;
+      const maximumY = Math.max(...curveYValues) + bodyWidth * 0.5;
+      // ViewBox vuông và preserveAspectRatio=meet: tỷ lệ X:Y luôn bằng 1:1.
+      const viewSize = Math.max(maximumX - minimumX, maximumY - minimumY);
+      const viewLeft = (minimumX + maximumX - viewSize) / 2;
+      const viewTop = (minimumY + maximumY - viewSize) / 2;
+      return {
+        path: path,
+        points: points,
+        bodyPath: bodyPath,
+        head: head,
+        shoulderPath: shoulderPath,
+        labelX: Math.min(...curveXValues) - 20,
+        viewBox: [viewLeft, viewTop, viewSize, viewSize].join(' ')
+      };
+    },
+
+    timeline(seriesIndex) {
+      const samples = this.s.samples || [];
+      let path = '';
+      let hasPreviousPoint = false;
+      for (let sampleIndex = 0; sampleIndex < samples.length; sampleIndex++) {
+        const sample = samples[sampleIndex];
+        const angleDegrees = seriesIndex < 4 ? sample.pitch?.[seriesIndex] : sample.relative?.[seriesIndex - 4];
+        if (!Number.isFinite(angleDegrees)) {
+          hasPreviousPoint = false;
+          continue;
+        }
+        const positionX = sampleIndex * 600 / 119;
+        const positionY = 90 - angleDegrees * 2;
+        path += (hasPreviousPoint ? ' L ' : ' M ') + positionX + ' ' + positionY;
+        hasPreviousPoint = true;
+      }
+      return path;
+    },
+    chooseSession(session) { this.chosen = session; this.noteDraft = session.note || ''; },
+    sessionAverage(session, sensorIndex) {
+      const samples = session.samples.filter(sample => sample.pitch && Number.isFinite(sample.pitch[sensorIndex]));
+      if (!samples.length) return '—';
+      const sum = samples.reduce((total, sample) => total + sample.pitch[sensorIndex], 0);
+      return this.fmt(sum / samples.length);
+    },
+    sessionMax(session, sensorIndex) {
+      const samples = (session.samples || []).filter(sample => sample.pitch && Number.isFinite(sample.pitch[sensorIndex]));
+      return samples.length ? this.fmt(Math.max(...samples.map(sample => sample.pitch[sensorIndex]))) : '—';
+    },
+    sessionRelative(session, sensorIndex) {
+      const samples = (session.samples || []).filter(sample => sample.pitch && Number.isFinite(sample.pitch[sensorIndex]) && Number.isFinite(sample.pitch[sensorIndex + 1]));
+      if (!samples.length) return '—';
+      const sum = samples.reduce((total, sample) => total + sample.pitch[sensorIndex] - sample.pitch[sensorIndex + 1], 0);
+      return this.fmt(sum / samples.length);
+    },
+    historyLine(session, sensorIndex) {
+      const samples = session.samples || [];
+      let path = '';
+      let hasPreviousPoint = false;
+      samples.forEach((sample, index) => {
+        const angleDegrees = sample.pitch?.[sensorIndex];
+        if (!Number.isFinite(angleDegrees)) { hasPreviousPoint = false; return; }
+        const positionX = samples.length > 1 ? index * 600 / (samples.length - 1) : 0;
+        path += (hasPreviousPoint ? ' L ' : ' M ') + positionX + ' ' + (90 - angleDegrees * 2);
+        hasPreviousPoint = true;
+      });
+      return path;
+    },
+    dayLabel(dayIndex) {
+      const date = new Date(Date.now() - (6 - dayIndex) * 86400000);
+      return date.toLocaleDateString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit' });
+    },
+    demoLine(values) {
+      return values.map((value, index) => (index ? 'L ' : 'M ') + index * 100 + ' ' + (150 - value * 7)).join(' ');
+    }
+  }
+};
 </script>
