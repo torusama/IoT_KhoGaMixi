@@ -1,8 +1,8 @@
 # F06.2 — Dashboard 2.0 (bản thử nghiệm)
 
-Dashboard tách biệt với backend hiện có; đây **chưa phải triển khai F06.2 hoàn chỉnh**. Demo không sử dụng MQTT, Firebase hoặc ESP32. Không đưa bản này lên mạng công cộng: runtime demo chỉ lắng nghe localhost, không có đăng nhập dashboard.
+Dashboard có hai chế độ chạy local. `npm run demo` dùng dữ liệu tạo trong giao diện. `npm run connected` đọc góc, mốc, trạng thái phiên và lịch sử từ backend đang chạy với simulator MQTT v2. Cả hai bind localhost. Xem [các bước chạy và bàn giao F04/F05](../../docs/F02.2-F03-ban-giao.md).
 
-**Muốn nối ESP32 thật:** đọc [đấu mạch/nạp firmware](../../hardware/README.md) và [trạng thái đường nhận MQTT → backend → dashboard](../../docs/device-integration.md). Backend 1880 đã có MQTT receiver và REST/SSE, nhưng firmware hiện thiếu auth/contract v2, còn các link adapter F06.1 trong flow dashboard chưa nối. Chỉ đổi Wi-Fi, cắm USB hoặc đặt SPT_MODE=production không tự đưa data thật lên trang này.
+Để nối ESP32, đọc [đấu mạch/nạp firmware](../../hardware/README.md) và [tích hợp MQTT v2](../../docs/device-integration.md). Firmware hiện cần cập nhật auth và schema v2.
 
 ## Giao diện theo dõi
 
@@ -23,9 +23,11 @@ Mở http://127.0.0.1:1881/spt/dashboard. Các trang khác: `/spt/history`, `/sp
 
 `SPT_MODE=demo` là lựa chọn tường minh; mặc định là `production`, không sinh telemetry hay ACK mô phỏng. Thay đổi mode cần khởi động lại runtime. Dữ liệu demo chỉ ở bộ nhớ Node-RED, bao gồm bảy phiên minh họa, sẽ mất khi khởi động lại. Điều khiển kịch bản ở Dashboard: gần thẳng, C, S, thiếu cảm biến, ngắt kết nối; tùy chọn ACK thành công, từ chối hoặc timeout. Lưu mốc khi dữ liệu hợp lệ và phiên idle. Đường cong demo dùng core F02.1 tại `shared/geometry/spine2d.js` qua build nhúng vào widget; giữ góc nghiêng tuyệt đối, wrap ±180°, ngưỡng gần thẳng thử nghiệm 0.3° và SVG fit tỷ lệ X:Y=1:1. Đây vẫn là dữ liệu Simulation; production chưa được nối. Timeline chỉ giữ 120 mẫu gần nhất, và phân bố của phiên demo chỉ dựa trên phần mẫu còn giữ, không đại diện cho toàn bộ phiên dài.
 
-History có biểu đồ mẫu, tổng hợp góc, sự kiện và ghi chú demo. Progress có lựa chọn phiên/ngày/7 ngày và ví dụ phản hồi sau rung; các biểu đồ xu hướng, phân bố và phản hồi là bộ số minh họa độc lập, không được tính từ lịch sử demo. Settings cho chỉnh chỉ số nhắc, ngưỡng, email và Writing Mode trong demo. Writing Mode và email chỉ đổi trạng thái mô phỏng, chưa điều khiển firmware hay gửi thư. Bài kiểm tra ổn định mốc 5–10 giây và đối chiếu điều kiện đeo vẫn chờ thiết bị/backend.
+History demo có biểu đồ mẫu, tổng hợp góc, sự kiện và ghi chú. Progress demo có ví dụ độc lập cho phiên/ngày/7 ngày và phản hồi sau rung. Settings demo có ngưỡng, email và Writing Mode. Quy trình lấy mốc có kiểm tra đủ bốn kênh và độ ổn định nằm trong chế độ `connected`.
 
 ## Bàn giao tích hợp
+
+Chế độ `connected` chạy adapter [backend-adapter.js](backend-adapter.js) trong Node-RED của dashboard. Adapter đọc REST, theo dõi mã lệnh, tải từng trang lịch sử và giữ token phía máy chủ. Các phần tích hợp qua link F06.1 bên dưới dành cho môi trường triển khai riêng.
 
 Giao diện dùng `styles.css` làm bộ style chung. Font Be Vietnam Pro được lưu trong `fonts/` theo SIL Open Font License (`fonts/OFL.txt`); build nhúng font vào một `ui-template` CSS dùng chung, nên không cần truy cập Google Fonts khi chạy. Chỉnh giao diện trong `widget.vue` và `styles.css`, sau đó chạy `npm run build` và khởi động lại runtime để nạp flow mới.
 
@@ -42,7 +44,7 @@ ACK nội bộ của flow nhận `{kind:'ack',requestId,deviceId,commandType,ses
 
 ## Kiểm thử và giới hạn
 
-`npm test` kiểm tra tương đối trong demo, gap, correlation ACK, rejected/timeout, cách ly production và thời gian hợp lệ. `npm run test:browser` kiểm tra dashboard đang chạy bằng Chrome headless: bốn trang, responsive 375/768/1440, hình vẽ thực sự nằm trong viewport, chọn mẫu, mốc, START/STOP, nhắc rung và thiếu sensor. Chạy `npm run demo` ở terminal khác trước. Có thể đặt `CHROME_PATH` hoặc `SPT_DASHBOARD_ORIGIN`; ảnh kiểm tra lưu tại `.runtime/dashboard-review/` ở root. Chưa kiểm tra import riêng, phần cứng, Firebase thật hoặc E2E thiết bị. T06-01–17 chưa được coi là PASS toàn bộ. Chưa có phân tích ổn định cảm biến cho reference; production normalizer/stale xử lý, đồ thị F04, timeline hover, session details đầy đủ và lưu bền vẫn cần thực hiện.
+`npm test` kiểm tra góc tương đối, khoảng thiếu dữ liệu, ACK và các kịch bản demo. `npm run test:browser` dùng Chrome headless, mặc định với dashboard đang chạy `npm run demo`. Để kiểm tra qua backend, chạy stack `connected` với simulator `exercise`, đặt `SPT_DASHBOARD_MODE=connected` rồi chạy cùng lệnh. Có thể đặt `CHROME_PATH` hoặc `SPT_DASHBOARD_ORIGIN`. Ảnh kiểm tra lưu ở `.runtime/dashboard-review/` tại root.
 
 ## Công cụ kiểm chứng F02.1
 

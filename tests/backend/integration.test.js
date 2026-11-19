@@ -65,20 +65,29 @@ test('real Node-RED + authenticated MQTT + simulator + REST/SSE + durable histor
     method: 'OPTIONS', headers: { Origin: 'http://localhost:5173', 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'authorization,content-type' }
   });
   assert.equal(preflight.status, 204); assert.equal(preflight.headers.get('access-control-allow-origin'), 'http://localhost:5173');
-  simulator = await startSimulator({ url, password: devicePassword, preflightMs: 100 });
+  const referenceFile = path.join(directory, 'simulator.json');
+  simulator = await startSimulator({ url, password: devicePassword, preflightMs: 100, scenario: 'exercise', referenceFile });
   await until(() => request('/devices/esp32_01'), value => value.connection === 'online');
   const { PostureApi } = await import(pathToFileURL(path.resolve(__dirname, '../../frontend/assets/js/posture-api.js')).href);
   const api = new PostureApi({ baseUrl: `http://127.0.0.1:${httpPort}`, token: apiToken });
   const stream = api.stream({ signal: abort.signal }); const first = await stream.next(); assert.equal(first.value.type, 'snapshot');
   const applied = async command => until(() => request(`/commands/${command.command_id}`), value => value.status === 'applied');
-  const reference = await request('/devices/esp32_01/commands', { command: 'SET_REFERENCE', guided_confirmation: true, command_id: 'integration_reference' });
-  await applied(reference); assert.equal((await request('/devices/esp32_01/references')).items.length, 1);
+  const reference = await request('/devices/esp32_01/commands', { command: 'SET_REFERENCE', guided_confirmation: true, posture: 'standing', command_id: 'integration_reference' });
+  await until(() => request('/devices/esp32_01'), value => value.state.reference_capture?.stable_ms > 0);
+  assert.equal((await request('/devices/esp32_01/references')).items.length, 0);
+  await applied(reference);
+  const storedReference = (await request('/devices/esp32_01/references')).items[0];
+  assert.equal(storedReference.posture, 'standing');
+  assert.equal(storedReference.pitch_deg.length, 4);
+  assert.equal(storedReference.relative_deg.length, 3);
+  assert.equal(storedReference.calibration.profile, 'simulator_identity');
   const vibration = await api.vibrate('esp32_01', 100, 'integration_vibration'); await applied(vibration);
   const startBody = { command: 'START', mode: 'reference', command_id: 'integration_start' };
   const start = await request('/devices/esp32_01/commands', startBody); await applied(start);
   assert.equal((await request('/devices/esp32_01/commands', startBody)).payload.session_id, start.payload.session_id);
   const live = await until(() => request('/devices/esp32_01'), value => value.telemetry?.session_id === start.payload.session_id);
   assert.equal(live.telemetry.curve.nodes_mm.length, 4); assert.equal(live.telemetry.simulated, true);
+  assert.ok(live.telemetry.measurement_valid && live.telemetry.deviation.value_deg < 1);
   const reminder = await api.setReminder('esp32_01', false, 'integration_reminder'); await applied(reminder);
   const next = await stream.next(); assert.ok(next.value.type); await stream.return();
   const event = { schema_version: 2, device_id: 'esp32_01', boot_id: live.state.boot_id, session_id: start.payload.session_id,
@@ -88,9 +97,14 @@ test('real Node-RED + authenticated MQTT + simulator + REST/SSE + durable histor
   await simulator.client.publishAsync('posture/esp32_01/event', JSON.stringify(event), { qos: 0 });
   await simulator.client.publishAsync('posture/esp32_01/event', JSON.stringify(event), { qos: 0 });
   await until(() => request(`/sessions/${start.payload.session_id}/events`), value => value.items.length === 1);
+  await until(() => request(`/sessions/${start.payload.session_id}/events`), value =>
+    value.items.some(item => item.type === 'data_gap' && item.ended_reason === 'recovered'));
   const stop = await api.stop('esp32_01', start.payload.session_id, 'integration_stop'); await applied(stop);
   const saved = await until(() => request(`/sessions/${start.payload.session_id}`), value => value.meta.storage_status === 'saved');
   assert.ok(saved.final.valid_metric_ms > 0);
+  assert.ok(saved.final.invalid_ms >= 1000);
+  assert.ok(saved.final.deviation_stats.above_threshold_ms > 0);
+  assert.equal(saved.final.angle_stats.relative.length, 3);
   assert.equal(saved.final.histogram_ms.reduce((a, b) => a + b, 0), saved.final.valid_metric_ms);
   assert.ok((await request(`/sessions/${start.payload.session_id}/keyframes`)).items.length > 0);
   await simulator.close(); simulator = null;
@@ -98,8 +112,12 @@ test('real Node-RED + authenticated MQTT + simulator + REST/SSE + durable histor
   // Restart the real runtime: history survives, while retained state alone stays offline.
   await stopChild(); await boot();
   assert.equal((await request('/sessions')).items.length, 1);
-  assert.equal((await request(`/sessions/${start.payload.session_id}/events`)).items.length, 1);
+  assert.equal((await request(`/sessions/${start.payload.session_id}/events`)).items.filter(item => item.event_id === event.event_id).length, 1);
   assert.equal((await request('/devices/esp32_01')).connection, 'offline');
+  simulator = await startSimulator({ url, password: devicePassword, referenceFile });
+  const reconnected = await until(() => request('/devices/esp32_01'), value => value.connection === 'online');
+  assert.equal(reconnected.state.config.reference_rev, storedReference.reference_rev);
+  assert.deepEqual((await request('/devices/esp32_01/references')).items, [storedReference]);
 });
 
 test('Firebase Admin persistence against an explicitly selected emulator', {

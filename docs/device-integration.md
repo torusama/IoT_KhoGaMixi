@@ -209,9 +209,9 @@ Không tự đặt session ID nếu field chưa có. HTTP 202 là đã tiếp nh
 
 ## 5. Nối dashboard với backend và F02.1
 
-Dashboard cổng 1881 là runtime riêng. Backend cổng 1880 phát REST/SSE. Các điểm `F06.1 normalized events and ACK` và `F06.1 command adapter OUT` trong flow dashboard hiện có `links:[]`, chưa nối với backend. Widget `geometry()` hiện từ chối mode khác demo; đây là giới hạn source đang có, không phải chỉ thiếu một URL cấu hình.
+Dashboard cổng 1881 là runtime riêng. Chạy `npm run connected` tại `frontend/dashboard` để đọc REST từ backend cổng 1880 qua adapter phía máy chủ. Chế độ này hiển thị góc và đường lưng từ khung simulator, lấy mốc, quản lý Start/Stop và đọc lịch sử đã lưu. Xem [bàn giao F02.2 và F03](F02.2-F03-ban-giao.md) để chạy cả stack.
 
-Người thực hiện adapter production cần làm đủ:
+Các điểm link `F06.1 normalized events and ACK` và `F06.1 command adapter OUT` dành cho người triển khai flow qua link. Khi kết nối firmware và hoàn thiện production, cần kiểm tra các điều kiện sau:
 
 - Một thành phần phía server đọc REST snapshot và SSE của backend với Bearer token, reconnect và tải lại snapshot. Không đặt token quản trị trong Vue widget hoặc query string.
 - Ánh xạ pitch_deg/sensor_quality/connection/received_at_ms thành state UI; kiểm tra device/boot/session/revision, độ mới và dữ liệu đồng bộ. Frame lỗi/stale phải xóa geometry và để gap.

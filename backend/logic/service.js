@@ -3,6 +3,7 @@ const { EventEmitter } = require('node:events');
 const { randomUUID, createHash } = require('node:crypto');
 const { assert, AppError } = require('./errors');
 const { id, angle, integer, configSnapshot, validateMessage } = require('../integrations/mqtt/protocol');
+const { POSTURES, relativeAngles, referenceMatches, evaluateFrame } = require('./reference');
 const clone = value => structuredClone(value);
 const terminal = status => ['applied', 'rejected', 'cancelled'].includes(status);
 const key = prefix => `${prefix}_${Date.now()}_${randomUUID().replaceAll('-', '').slice(0, 16)}`;
@@ -80,10 +81,17 @@ class PostureService extends EventEmitter {
     assert(session.meta.device_id === message.device_id && session.meta.boot_id === message.boot_id, 'SESSION_MISMATCH', 'Session belongs to another device or boot');
     return session;
   }
-  referenceUpdates(deviceId, snapshot, time) {
-    return snapshot.reference_rev === null ? {} : {
-      [`references/${deviceId}/${snapshot.reference_rev}`]: { ...clone(snapshot.reference), device_id: deviceId, config_rev: snapshot.config_rev, received_at_ms: time }
-    };
+  async referenceUpdates(deviceId, snapshot, time, simulated) {
+    if (snapshot.reference_rev === null) return {};
+    const path = `references/${deviceId}/${snapshot.reference_rev}`;
+    if (await this.store.get(path)) return {};
+    const reference = snapshot.reference;
+    return { [path]: {
+      ...clone(reference), relative_deg: reference.relative_deg ?? relativeAngles(reference.pitch_deg),
+      calibration_rev: reference.calibration_rev ?? snapshot.calibration_rev, geometry_rev: reference.geometry_rev ?? snapshot.geometry_rev,
+      algorithm_version: snapshot.algorithm_version, sensor_map: snapshot.sensor_map, distances_mm: snapshot.distances_mm,
+      device_id: deviceId, config_rev: snapshot.config_rev, received_at_ms: time, simulated: simulated === true
+    } };
   }
   async ingest(topic, raw, { retained = false } = {}) {
     this.stats.received++;
@@ -146,7 +154,10 @@ class PostureService extends EventEmitter {
       }
     }
     const next = { ...record, state: clone(message), last_state_at_ms: time, fresh: !retained, connection: retained ? 'offline' : 'online' };
-    const updates = { [`devices/${deviceId}/state`]: message, [`devices/${deviceId}/last_state_at_ms`]: time, ...this.referenceUpdates(deviceId, message.config, time) };
+    const updates = { [`devices/${deviceId}/state`]: message, [`devices/${deviceId}/last_state_at_ms`]: time };
+    if (!previous || previous.config.reference_rev !== message.config.reference_rev) {
+      Object.assign(updates, await this.referenceUpdates(deviceId, message.config, time, message.simulated));
+    }
     await this.persist(updates);
     this.devices.set(deviceId, next);
     if (!retained) {
@@ -189,10 +200,11 @@ class PostureService extends EventEmitter {
         assert(snapshot.mounting_confirmed, 'MOUNTING_NOT_CONFIRMED', 'Confirm mounting on the device before START', 409);
         assert(['measurement_only', 'reference'].includes(request.mode || 'measurement_only'), 'INVALID_COMMAND', 'Invalid mode');
         assert(request.mode !== 'reference' || snapshot.reference_rev !== null, 'REFERENCE_REQUIRED', 'Set a guided reference first', 409);
+        assert(request.mode !== 'reference' || referenceMatches(snapshot), 'REFERENCE_STALE', 'Capture a reference for the current calibration and geometry', 409);
         const sessionId = key('ses');
         Object.assign(payload, { session_id: sessionId, mode: request.mode || 'measurement_only', preflight_timeout_ms: 5000 });
         const meta = { session_id: sessionId, device_id: deviceId, boot_id: state.boot_id, status: 'pending', mode: payload.mode,
-          command_id: commandId, created_at_ms: time, started_at_ms: null, ended_at_ms: null,
+          command_id: commandId, created_at_ms: time, started_at_ms: null, ended_at_ms: null, simulated: state.simulated === true,
           storage_driver: this.store.kind, storage_status: 'awaiting_final', cloud_status: this.store.kind === 'firebase' ? 'awaiting_final' : 'not_configured' };
         updates[`sessions/${sessionId}/meta`] = meta;
         updates[`sessions/${sessionId}/config_snapshot`] = clone(snapshot);
@@ -204,8 +216,11 @@ class PostureService extends EventEmitter {
         payload.session_id = request.session_id;
       } else if (request.command === 'SET_REFERENCE') {
         assert(state.state === 'IDLE', 'SESSION_LOCKED', 'Reference can only change in IDLE', 409);
+        assert(snapshot.mounting_confirmed, 'MOUNTING_NOT_CONFIRMED', 'Confirm mounting before capturing a reference', 409);
         assert(request.guided_confirmation === true, 'GUIDANCE_REQUIRED', 'Confirm the guided reference procedure');
-        payload.reference_rev = key('ref'); payload.capture = 'current_stable';
+        const posture = request.posture ?? 'seated';
+        assert(POSTURES.includes(posture), 'INVALID_COMMAND', 'Use seated or standing for reference posture');
+        Object.assign(payload, { reference_rev: key('ref'), capture: 'current_stable', posture });
       } else if (request.command === 'SET_REMINDER') {
         assert(typeof request.enabled === 'boolean', 'INVALID_COMMAND', 'enabled must be boolean');
         assert(!request.enabled || snapshot.reference_rev !== null, 'REFERENCE_REQUIRED', 'Reminder requires a reference', 409);
@@ -277,15 +292,16 @@ class PostureService extends EventEmitter {
       session.meta.status = 'stopped'; session.meta.ended_at_ms = message.ts_unix_ms ?? time;
       updates[`sessions/${payload.session_id}/meta`] = session.meta;
     } else if (payload.command === 'SET_REFERENCE') {
-      assert(message.config && message.config.reference_rev === payload.reference_rev, 'ACK_MISMATCH', 'SET_REFERENCE requires confirmed config with requested reference revision');
+      assert(message.state === 'IDLE' && message.config && message.config.reference_rev === payload.reference_rev, 'ACK_MISMATCH', 'SET_REFERENCE requires confirmed IDLE config with requested reference revision');
       configSnapshot(message.config);
-      updates[`devices/${message.device_id}/state/config`] = message.config;
-      Object.assign(updates, this.referenceUpdates(message.device_id, message.config, time));
+      assert((message.config.reference.posture == null || message.config.reference.posture === payload.posture) &&
+        referenceMatches(message.config), 'ACK_MISMATCH', 'Reference does not match the requested posture or current calibration');
+      Object.assign(updates, await this.referenceUpdates(message.device_id, message.config, time, message.simulated ?? record.state.simulated));
     }
     const nextState = { ...record.state, last_command_id: command.command_id };
     if (payload.command === 'START') Object.assign(nextState, { state: 'RUNNING', session_id: payload.session_id });
     if (payload.command === 'STOP') Object.assign(nextState, { state: 'IDLE', session_id: null, last_closed_session_id: payload.session_id });
-    if (payload.command === 'SET_REFERENCE') nextState.config = clone(message.config);
+    if (payload.command === 'SET_REFERENCE') Object.assign(nextState, { config: clone(message.config), reference_capture: null });
     updates[`devices/${message.device_id}/state`] = nextState;
     await this.finishCommand(record, command, 'applied', message, updates);
     record.state = nextState;
@@ -298,14 +314,19 @@ class PostureService extends EventEmitter {
       assert(message[rev] === snapshot[rev], 'CONFIG_MISMATCH', `Frame ${rev} differs from frozen session snapshot`);
     }
     assert(!message.metric_valid || session.meta.mode === 'reference', 'METRIC_MODE_MISMATCH', 'Measurement-only session cannot claim a reference metric');
+    const values = evaluateFrame(message, snapshot, session.meta.mode);
+    assert(!message.metric_valid || values.metric_valid, 'METRIC_MODE_MISMATCH', 'Reference metric requires the frozen calibration and geometry');
+    if (message.deviation) assert(Math.abs(message.deviation.value_deg - values.deviation.value_deg) < 0.05, 'METRIC_MISMATCH', 'Deviation differs from the frozen reference');
     const record = this.devices.get(message.device_id);
     if (!record || record.state.boot_id !== message.boot_id || ['rejected', 'pending'].includes(session.meta.status)) return;
     if (session.final) return;
     if (record.telemetry?.session_id === message.session_id && message.telemetry_seq <= record.telemetry.telemetry_seq) return;
     // Late frames may belong to an old session, but must never replace the current live view.
     if (record.state.session_id !== message.session_id || record.state.state !== 'RUNNING') return;
-    const time = this.now(); const frame = { ...message, received_at_ms: time };
-    if (record.last_keyframe_session_id !== message.session_id || record.last_keyframe_at_ms == null || time - record.last_keyframe_at_ms >= this.config.keyframeIntervalMs) {
+    const time = this.now(); const frame = { ...message, received_at_ms: time, measurement_valid: values.measurement_valid, deviation: message.metric_valid ? values.deviation : null };
+    if (record.last_keyframe_session_id !== message.session_id || record.last_keyframe_at_ms == null ||
+      frame.sample_gap_before || frame.measurement_valid !== record.telemetry?.measurement_valid ||
+      time - record.last_keyframe_at_ms >= this.config.keyframeIntervalMs) {
       const frameKey = `${message.boot_id}_${String(message.sample_seq).padStart(12, '0')}`;
       await this.persist({ [`sessions/${message.session_id}/keyframes/${frameKey}`]: frame });
       record.last_keyframe_at_ms = time;
@@ -326,6 +347,8 @@ class PostureService extends EventEmitter {
     const session = await this.ownedSession(message);
     assert(session.meta.status !== 'rejected', 'SESSION_CLOSED', 'Session was rejected');
     assert(message.valid_metric_ms === 0 || (session.meta.mode === 'reference' && session.config_snapshot.reference_rev !== null), 'METRIC_MODE_MISMATCH', 'Reference time requires reference session mode');
+    if (message.deviation_stats) assert(session.meta.mode === 'reference' &&
+      message.deviation_stats.reference_rev === session.config_snapshot.reference_rev, 'METRIC_MODE_MISMATCH', 'Summary reference differs from session');
     const digest = hash(message);
     const summaryKey = `${message.boot_id}_${String(message.summary_seq).padStart(12, '0')}`;
     const old = await this.store.get(`sessions/${message.session_id}/summaries/${summaryKey}`);
@@ -345,6 +368,11 @@ class PostureService extends EventEmitter {
         assert(message[field] >= latest[field], 'SUMMARY_REGRESSION', `${field} regressed`);
       }
       assert(message.histogram_ms.every((v, i) => v >= latest.histogram_ms[i]), 'SUMMARY_REGRESSION', 'Histogram regressed');
+      if (latest.deviation_stats && message.deviation_stats) {
+        const before = latest.deviation_stats, after = message.deviation_stats;
+        assert(after.threshold_deg === before.threshold_deg && after.above_threshold_ms >= before.above_threshold_ms &&
+          after.posture_event_count >= before.posture_event_count, 'SUMMARY_REGRESSION', 'Deviation stats regressed or changed threshold');
+      }
     }
     assert(!message.is_final || advances, 'INVALID_SUMMARY', 'Final must be the newest cumulative snapshot');
     const saved = { ...message, received_at_ms: this.now(), payload_hash: digest };
@@ -352,8 +380,7 @@ class PostureService extends EventEmitter {
       [`sessions/${message.session_id}/summary_messages/${message.message_id}`]: digest };
     if (advances) updates[`sessions/${message.session_id}/latest_summary`] = saved;
     if (message.is_final) {
-      session.meta.storage_status = 'saved'; session.meta.cloud_status = this.store.kind === 'firebase' ? 'saved' : 'not_configured'; session.meta.status = 'stopped';
-      session.meta.ended_at_ms = message.ts_unix_ms ?? this.now();
+      session.meta.storage_status = 'saved'; session.meta.cloud_status = this.store.kind === 'firebase' ? 'saved' : 'not_configured';
       updates[`sessions/${message.session_id}/final`] = saved;
       updates[`sessions/${message.session_id}/meta`] = session.meta;
     }
@@ -365,6 +392,8 @@ class PostureService extends EventEmitter {
   async onEvent(message) {
     const session = await this.ownedSession(message); const digest = hash(message);
     assert(session.meta.status !== 'rejected', 'SESSION_CLOSED', 'Session was rejected');
+    if (message.reference_rev !== undefined) assert(message.reference_rev === session.config_snapshot.reference_rev,
+      'METRIC_MODE_MISMATCH', 'Event reference differs from session');
     const known = await this.store.get(`sessions/${message.session_id}/event_messages/${message.message_id}`);
     if (known) {
       assert(known === digest, 'MESSAGE_CONFLICT', 'Event message ID reused with different content');
@@ -377,6 +406,9 @@ class PostureService extends EventEmitter {
     if (newer) {
       if (previous) {
         assert(message.started_at_mono_us === previous.started_at_mono_us && message.duration_ms >= previous.duration_ms && message.peak_deg >= previous.peak_deg, 'EVENT_REGRESSION', 'Event identity/duration/peak changed');
+        for (const field of ['type', 'metric', 'threshold_deg', 'reference_rev']) {
+          assert(message[field] === previous[field], 'EVENT_REGRESSION', `Event changed ${field}`);
+        }
         assert(previous.ended_at_mono_us === null || (message.ended_at_mono_us !== null && message.ended_at_mono_us >= previous.ended_at_mono_us), 'EVENT_REGRESSION', 'Closed event cannot reopen');
       }
       updates[`sessions/${message.session_id}/events/${message.event_id}`] = { ...message, payload_hash: digest, received_at_ms: this.now() };

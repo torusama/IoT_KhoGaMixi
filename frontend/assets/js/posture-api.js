@@ -26,7 +26,7 @@ export class PostureApi {
   }
   start(id, mode = 'measurement_only', commandId) { return this.send(id, 'START', { mode }, commandId); }
   stop(id, sessionId, commandId) { return this.send(id, 'STOP', { session_id: sessionId }, commandId); }
-  setReference(id, commandId) { return this.send(id, 'SET_REFERENCE', { guided_confirmation: true }, commandId); }
+  setReference(id, commandId, posture) { return this.send(id, 'SET_REFERENCE', { guided_confirmation: true, posture }, commandId); }
   setReminder(id, enabled, commandId) { return this.send(id, 'SET_REMINDER', { enabled }, commandId); }
   vibrate(id, durationMs = 200, commandId) { return this.send(id, 'TEST_VIBRATION', { duration_ms: durationMs }, commandId); }
   /** Authenticated fetch streaming; native EventSource cannot attach this Bearer header. */

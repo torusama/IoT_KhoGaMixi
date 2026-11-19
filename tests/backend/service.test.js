@@ -93,6 +93,19 @@ test('STOP targets exact session; final saved differs from STOP applied', async 
   assert.equal(session.meta.storage_status, 'saved'); assert.equal(session.meta.cloud_status, 'not_configured');
 });
 
+test('a final stored ahead of STOP ACK does not confirm the command', async () => {
+  const f = await running();
+  const sessionId = f.command.payload.session_id;
+  const stop = await f.service.command('esp32_01', { command: 'STOP', session_id: sessionId });
+  await f.ingest(summary(f.command, { is_final: true }));
+  const stored = await f.service.sessionInfo(sessionId);
+  assert.equal(stored.meta.storage_status, 'saved');
+  assert.equal(stored.meta.status, 'running');
+  assert.equal((await f.service.commandStatus(stop.command_id)).status, 'pending');
+  await f.ingest(ack(stop));
+  assert.equal((await f.service.sessionInfo(sessionId)).meta.status, 'stopped');
+});
+
 test('summary deduplication, cumulative totals, regression and histogram validation', async () => {
   const f = await running(); const one = summary(f.command);
   await f.ingest(one); await f.ingest(one);

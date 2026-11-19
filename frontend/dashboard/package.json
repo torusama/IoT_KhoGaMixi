@@ -7,7 +7,8 @@
     "start": "node node_modules/node-red/red.js --userDir .runtime --settings settings.js",
     "test": "node --test model.test.js",
     "test:browser": "node ../../tests/frontend/dashboard-browser.js",
-    "demo": "node demo.js"
+    "demo": "node run-dashboard.js demo",
+    "connected": "node run-dashboard.js connected"
   },
   "license": "ISC",
   "type": "commonjs",

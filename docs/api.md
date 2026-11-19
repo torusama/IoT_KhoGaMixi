@@ -37,7 +37,7 @@ Danh sách phân trang dùng `limit` 1–200 (mặc định 50), `before` lấy 
 Các lệnh còn lại:
 
 ```json
-{"command":"SET_REFERENCE","command_id":"ui_ref_001","guided_confirmation":true}
+{"command":"SET_REFERENCE","command_id":"ui_ref_001","guided_confirmation":true,"posture":"seated"}
 {"command":"SET_REMINDER","command_id":"ui_reminder_001","enabled":false}
 {"command":"TEST_VIBRATION","command_id":"ui_motor_001","duration_ms":200}
 {"command":"CONFIG","command_id":"ui_rate_001","publish_interval_ms":100}
@@ -50,6 +50,8 @@ Frontend giữ trạng thái chờ đến command applied hoặc state mới ph�
 Session `status=stopped` xác nhận đã kết thúc; `storage_status=saved` xác nhận final đã lưu bền. `storage_driver=file` không là cloud, nên `cloud_status=not_configured`. Với driver firebase, cloud_status=saved nói adapter Firebase đã nhận ghi; kiểm tra môi trường để phân biệt emulator/cloud thật. Phiên interrupted chưa có final dùng snapshot mới nhất và phải hiển thị là chưa hoàn chỉnh.
 
 Mốc chỉ xuất hiện trong danh sách references sau thiết bị xác nhận config mới. START không tự chụp mốc. SET_REFERENCE bị khóa khi RUNNING; tắt nhắc vẫn tiếp tục đo.
+
+Xem các trường tiến độ lấy mốc, `telemetry.deviation`, `summary.angle_stats` và `summary.deviation_stats` trong [bàn giao F02.2 và F03](F02.2-F03-ban-giao.md).
 
 ## SSE và client có sẵn
 

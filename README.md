@@ -4,7 +4,7 @@ Hệ thống dùng ESP32 và bốn MPU6050 để ước lượng đường cong 
 
 ## Đọc phần này trước khi nối mạch
 
-**Đã có cơ chế nhận dữ liệu qua MQTT ở backend. Tuy nhiên, firmware ESP32 hiện tại chưa tương thích giao thức v2 của backend và dashboard chưa nối adapter dữ liệu thật. Cắm USB/nạp firmware xong chưa làm dashboard hiển thị dữ liệu cảm biến.**
+**Backend và dashboard có thể chạy chung với simulator MQTT v2.** Firmware ESP32 hiện còn dùng schema cũ và cần nâng lên v2 để gửi dữ liệu cảm biến vào cùng luồng.
 
 | Chặng | Hiện trạng đã đối chiếu source |
 |---|---|
@@ -12,7 +12,7 @@ Hệ thống dùng ESP32 và bốn MPU6050 để ước lượng đường cong 
 | ESP32 → MQTT broker | Có code Wi-Fi và publish JSON cũ; cấu hình còn placeholder, chưa gửi username/password |
 | Broker → backend | Có MQTT subscriber, validator v2, quản lý phiên, lưu trữ và REST/SSE; đã kiểm thử bằng simulator |
 | Firmware hiện tại → backend v2 | **Chưa nối được trực tiếp**: thiếu auth và schema/boot/session/state/sequence/revision v2 |
-| Backend → dashboard cổng 1881 | Có API/client REST/SSE và các điểm nối, **chưa có adapter production hoàn chỉnh** |
+| Backend → dashboard cổng 1881 | `npm run connected` đọc API để hiển thị góc, mốc cá nhân, trạng thái phiên và lịch sử |
 | Dashboard Simulation | Chạy độc lập, dữ liệu tự sinh trong model; không chứng minh đang nhận ESP32 |
 | USB/Serial → backend | **Chưa có** bộ nhận dữ liệu Serial; USB hiện để nạp, cấp nguồn và xem log |
 
@@ -26,7 +26,7 @@ flowchart LR
     Broker --> Receiver[Node-RED: nhận và xác thực]
     Receiver --> Store[File hoặc Firebase]
     Receiver --> API[REST và SSE: cổng 1880]
-    API -.->|Chưa hoàn thiện adapter F06.1| Dashboard[Dashboard: cổng 1881]
+    API -->|REST qua adapter phía máy chủ| Dashboard[Dashboard: cổng 1881]
 ```
 
 Không có kết nối WebSocket trực tiếp từ ESP32 đến trình duyệt trong firmware hiện tại. Socket.IO bên trong FlowFuse Dashboard phục vụ giao diện, không thay đường nhận MQTT của thiết bị.
@@ -42,6 +42,7 @@ Không có kết nối WebSocket trực tiếp từ ESP32 đến trình duyệt 
 | Xem payload, topic, ACK/state/session/revision v2 | [MQTT contract](docs/mqtt-contract.md) và [JSON mẫu](backend/integrations/mqtt/examples/) |
 | Kết nối frontend với backend | [API REST/SSE](docs/api.md) và [dashboard README](frontend/dashboard/README.md) |
 | Hiểu đo góc và dựng ba cung | [Giải thích từng bước](docs/F02.1-giai-thich.md), [contract F02.1](docs/F02.1.md) |
+| Thử lấy mốc, thống kê phiên hoặc tiếp tục F04/F05 | [Bàn giao F02.2 và F03](docs/F02.2-F03-ban-giao.md) |
 | Xem kiến trúc, phạm vi và nghiệm thu | [Kiến trúc](docs/architecture.md), [PLAN](docs/PLAN.md), [báo cáo F02.1](docs/F02.1-report.md) |
 
 ## 1. Đấu mạch theo cấu hình hiện tại
@@ -134,7 +135,7 @@ Không đổi validator để nhận JSON cũ bằng cách tự gán boot/sessio
 | USB / COMx | Upload và Serial Monitor 115200 | Nạp/debug, không phải đường nhận backend hiện tại |
 | TCP 1883 | MQTT broker | Có, qua Wi-Fi; phải cấu hình LAN và credential |
 | HTTP 1880 | Backend REST/SSE `/api/v1` | Firmware hiện không gửi HTTP tới đây |
-| HTTP 1881 | Dashboard FlowFuse `/spt/dashboard` | Trình duyệt mở; chưa nối data thật |
+| HTTP 1881 | Dashboard FlowFuse `/spt/dashboard` | Chế độ `connected` đọc backend |
 | HTTP 1882 | Demo hình học `/frontend/geometry-demo/` | Không dùng bởi firmware |
 
 ## 6. Cấu trúc repository
@@ -144,7 +145,7 @@ Không đổi validator để nhận JSON cũ bằng cách tự gán boot/sessio
 | `hardware/firmware/` | PlatformIO/Arduino: I2C, lọc góc, FreeRTOS queue, MQTT legacy |
 | `backend/` | Node-RED, MQTT v2, API, persistence, broker/config và simulator |
 | `frontend/dashboard/` | Dashboard 2.0, state machine demo, Vue/CSS và flow sinh ra |
-| `frontend/assets/js/posture-api.js` | Client REST/SSE có Bearer token, chưa nối vào dashboard |
+| `frontend/assets/js/posture-api.js` | Client REST/SSE có Bearer token, dùng bởi adapter dashboard |
 | `frontend/geometry-demo/` | Công cụ kiểm chứng toán học độc lập |
 | `shared/geometry/` | Core F02.1 và adapter F01/v2, dùng được trong Node/browser |
 | `docs/` | Đấu nối/tích hợp, contract, setup, API và giải thích thuật toán |

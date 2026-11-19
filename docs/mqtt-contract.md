@@ -54,7 +54,7 @@ Mọi lệnh có `schema_version`, `device_id`, `command_id`, `command`, `target
 |---|---|---|
 | START | `session_id`, `mode:measurement_only/reference`, `preflight_timeout_ms:5000` | IDLE, đủ sensor/cấu hình/hướng lắp/tín hiệu; reference mode cần mốc |
 | STOP | `session_id` | Chỉ dừng đúng phiên RUNNING |
-| SET_REFERENCE | `reference_rev`, `capture:current_stable` | IDLE; lấy mốc có hướng dẫn, không tự đặt lúc START |
+| SET_REFERENCE | `reference_rev`, `capture:current_stable`, `posture:seated/standing` | IDLE; lấy mốc theo hướng dẫn, mặc định tư thế ngồi nếu request cũ bỏ qua |
 | SET_REMINDER | `enabled:boolean` | Bật cần có reference; tắt không ngừng thu nhận |
 | TEST_VIBRATION | `duration_ms`, 20–1000 | Nhịp hữu hạn, retry không rung lặp |
 | CONFIG | `publish_interval_ms`, 50–5000 | Chỉ đổi nhịp truyền, không đổi thời gian tích lũy |

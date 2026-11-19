@@ -1,4 +1,4 @@
-// Kiểm tra tương tác trên dashboard đang chạy: npm run demo trước khi chạy script này.
+// Chạy với dashboard demo, hoặc connected + simulator exercise khi đặt SPT_DASHBOARD_MODE=connected.
 // Có thể đặt CHROME_PATH và SPT_DASHBOARD_ORIGIN khi dùng cài đặt khác.
 const { spawn } = require('node:child_process');
 const fs = require('node:fs/promises');
@@ -16,6 +16,7 @@ const chromePath = process.env.CHROME_PATH || (process.platform === 'win32' ? 'C
   const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'spt-ui-browser-'));
   const browser = spawn(chromePath, [
     '--headless=new', '--disable-gpu', '--no-first-run', '--remote-debugging-port=0',
+    ...(process.env.SPT_CHROMIUM_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
     '--user-data-dir=' + profile, 'about:blank'
   ], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'] });
   let socket;
@@ -72,6 +73,48 @@ const chromePath = process.env.CHROME_PATH || (process.platform === 'win32' ? 'C
     await send('Runtime.enable');
     await send('Page.enable');
     await send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1150, deviceScaleFactor: 1, mobile: false });
+    if (process.env.SPT_DASHBOARD_MODE === 'connected') {
+      await send('Page.navigate', { url: dashboardOrigin + '/spt/settings' });
+      await waitFor("document.querySelector('.spt .checklist .ok') !== null");
+      assert.equal(await evaluate("document.querySelector('.spt .actions button').disabled"), true);
+      await evaluate("const posture=document.querySelector('.spt select'); posture.value='standing'; posture.dispatchEvent(new Event('change')); document.querySelector('.spt input[type=checkbox]').click()");
+      await evaluate("document.querySelector('.spt .actions button').click()");
+      await waitFor("document.querySelector('.spt progress') !== null");
+      await waitFor("document.querySelector('.spt .notice')?.textContent.includes('Đã lưu mốc')");
+      await waitFor("document.querySelector('.spt .event-row')?.textContent.includes('Đứng')");
+      await screenshot('connected-settings.png');
+
+      await send('Page.navigate', { url: dashboardOrigin + '/spt/dashboard' });
+      await waitFor("document.querySelector('.start-session:not([disabled])') !== null");
+      await evaluate("document.querySelector('.start-session').click()");
+      await waitFor("document.querySelector('.stop-session:not([disabled])') !== null");
+      await waitFor("document.querySelector('.reference-panel .info-row b')?.textContent.includes('°')");
+      await waitFor("document.querySelector('.livepath') !== null");
+      await screenshot('connected-dashboard.png');
+      await evaluate('new Promise(resolve=>setTimeout(resolve,8500))');
+      await evaluate("document.querySelector('.stop-session').click()");
+      await waitFor("document.querySelector('.stop-session') === null");
+
+      await send('Page.navigate', { url: dashboardOrigin + '/spt/history' });
+      await waitFor("document.querySelector('.history-row')?.textContent.includes('Mô phỏng')");
+      await evaluate("document.querySelector('.history-row').click()");
+      await waitFor("document.querySelector('.spt')?.textContent.includes('Đã lưu bản tổng hợp cuối')");
+      await waitFor("document.querySelectorAll('.angle-summary').length === 7 && document.querySelectorAll('.bin').length === 6");
+      assert.match(await evaluate("document.querySelector('.spt').textContent"), /Mất dữ liệu.*Vượt ngưỡng P1|Vượt ngưỡng P1.*Mất dữ liệu/s);
+      await screenshot('connected-history.png');
+      await send('Emulation.setDeviceMetricsOverride', { width: 375, height: 1000, deviceScaleFactor: 1, mobile: false });
+      await evaluate('new Promise(resolve=>setTimeout(resolve,300))');
+      const viewport = await evaluate(`({
+        width: innerWidth, scroll: document.documentElement.scrollWidth,
+        overflow: [...document.querySelectorAll('.spt *')].filter(el=>el.getBoundingClientRect().right>innerWidth+1)
+          .slice(0,12).map(el=>el.tagName+'.'+String(el.className))
+      })`);
+      await screenshot('connected-history-mobile.png');
+      assert.ok(viewport.scroll <= viewport.width, 'Connected History overflows: ' + JSON.stringify(viewport));
+      assert.deepEqual(errors, []);
+      console.log('PASS: browser → guided reference → MQTT START/STOP → deviation → persisted History with seven angles, histogram and gap events.');
+      return;
+    }
     await send('Page.navigate', { url: dashboardOrigin + '/spt/dashboard' });
     await waitFor("document.querySelectorAll('.preset-button').length === 3");
     await evaluate("document.querySelector('.preset-button').click()");
